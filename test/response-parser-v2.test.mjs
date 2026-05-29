@@ -112,5 +112,112 @@ test("wrapped approval: status + request extracted from inner payload", () => {
   assert.match(p.text, /Confirm this write\?/);
 });
 
+// --- LIVE approval shape (captured 2026-05-29): the pending write is a
+//     { tool_use_id, name, input } block (snake_case, no tool_approval_request
+//     type), alongside a completed serverToolResult that must be ignored. ---
+const liveApproval = {
+  content: [
+    {
+      type: "text",
+      text: JSON.stringify({
+        sessionId: "session-d15ee3ed-live",
+        status: "requires_approval",
+        role: "assistant",
+        content: [
+          {
+            type: "serverToolResult",
+            content: { output: "Completed", name: "thinking", toolUseId: "tooluse_old", status: "success" },
+          },
+          {
+            tool_use_id: "tooluse_vTMWQobq7d6VG02zHwkqwu",
+            name: "opportunity_creator",
+            input: { payload: { Project: { Title: "Amazon Redshift data warehouse migration" } } },
+          },
+          { type: "ASSISTANT_RESPONSE", content: { text: "I'll show you the final proposal for approval." } },
+        ],
+      }),
+    },
+  ],
+};
+
+test("live: status requires_approval", () => {
+  assert.equal(parseAgentResponse(liveApproval).status, "requires_approval");
+});
+
+test("live: extracts tool_use_id/name/input as an approval request", () => {
+  const p = parseAgentResponse(liveApproval);
+  assert.ok(Array.isArray(p.approvalRequests), "approvalRequests present");
+  assert.equal(p.approvalRequests.length, 1, "exactly one pending request (result excluded)");
+  assert.equal(p.approvalRequests[0].toolUseId, "tooluse_vTMWQobq7d6VG02zHwkqwu");
+  assert.equal(p.approvalRequests[0].toolName, "opportunity_creator");
+  assert.equal(
+    p.approvalRequests[0].parameters.payload.Project.Title,
+    "Amazon Redshift data warehouse migration",
+  );
+});
+
+test("live: completed serverToolResult is NOT treated as an approval", () => {
+  const p = parseAgentResponse(liveApproval);
+  assert.ok(!p.approvalRequests.some((r) => r.toolUseId === "tooluse_old"));
+});
+
+test("live: assistant prose still extracted alongside the approval", () => {
+  const p = parseAgentResponse(liveApproval);
+  assert.match(p.text, /final proposal for approval/);
+});
+
+// Negative: a normal "complete" response containing internal tool-use must NOT
+// surface approval requests (live extraction is gated on requires_approval).
+const completeWithToolUse = {
+  content: [
+    {
+      type: "text",
+      text: JSON.stringify({
+        sessionId: "session-complete",
+        status: "complete",
+        content: [
+          { tool_use_id: "tooluse_internal", name: "analyze_pipeline", input: { foo: "bar" } },
+          { type: "ASSISTANT_RESPONSE", content: { text: "Here is your pipeline analysis." } },
+        ],
+      }),
+    },
+  ],
+};
+
+test("complete response with internal tool-use surfaces NO approval requests", () => {
+  const p = parseAgentResponse(completeWithToolUse);
+  assert.equal(p.status, "complete");
+  assert.equal(p.approvalRequests, undefined);
+});
+
+// --- getSession in TOOL_REQUEST state: the pending request is the most recent
+//     event (sendMessage non-streaming responses don't carry it). ---
+const sessionToolRequest = {
+  content: [
+    {
+      type: "text",
+      text: JSON.stringify({
+        sessionId: "session-tr",
+        stateType: "TOOL_REQUEST",
+        eventCount: 3,
+        events: [
+          { data: { role: "user", content: [{ text: "create opp", type: "text" }] } },
+          { data: { role: "assistant", content: "I'll prepare it for approval." } },
+          { data: { tool_use_id: "tooluse_pending", name: "opportunity_creator", input: { payload: { X: 1 } } } },
+        ],
+      }),
+    },
+  ],
+};
+
+test("getSession TOOL_REQUEST: recovers pending tool_use_id from events", () => {
+  const p = parseAgentResponse(sessionToolRequest);
+  assert.equal(p.status, "TOOL_REQUEST");
+  assert.ok(Array.isArray(p.approvalRequests));
+  assert.equal(p.approvalRequests.length, 1);
+  assert.equal(p.approvalRequests[0].toolUseId, "tooluse_pending");
+  assert.equal(p.approvalRequests[0].toolName, "opportunity_creator");
+});
+
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail === 0 ? 0 : 1);

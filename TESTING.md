@@ -33,13 +33,28 @@ writes here are safe.
 
 ## 5. Write + human-in-the-loop approval  ← key new capability
 - Prompt: **"Create a Sandbox opportunity for Acme Corp — Redshift migration, ~$40k/mo spend, close end of Q3."**
-- Expect: status **`requires_approval`** with the proposed fields and an approval id. **Nothing is written yet.**
-- Then approve: **"Approve it."** → Claude calls `partner_central_respond_to_approval` (approve) → the write executes in Sandbox.
+- The agent gathers/validates fields over one or more turns, then returns status **`requires_approval`** and describes the proposed opportunity in its reply. **Nothing is written yet.**
+- Approve in **either** way:
+  - **Conversational:** just reply **"Approve — create it."** (the agent honors the instruction), or
+  - **Structured:** Claude calls `partner_central_get_session` to read `approval_requests[].tool_use_id`, then `partner_central_respond_to_approval` (approve).
+- Then the write executes in Sandbox.
 
 ## 6. Approval — reject / override path
-- Trigger another change (e.g. **"Update that opportunity's monthly spend to $20k."**), then:
-  - **"Reject — leave it at $40k."** → write cancelled, no change; or
-  - **"Override: set it to $25k and stage Qualified."** → executes the corrected version.
+- At a `requires_approval` step:
+  - **"Reject — don't create it."** → write cancelled, nothing changes; or
+  - **"Change the spend to $25k and stage to Qualified, then proceed."** → the agent revises and re-proposes for approval.
+
+---
+
+## Live results — 2026-05-29 (Sandbox, v1.0.0 build)
+Driven end-to-end against the live endpoint:
+- ✅ **Connection / auth / SigV4 / endpoint** — `verify_connection` OK.
+- ✅ **Read** — agent answered a capability query.
+- ✅ **File attachment** — a local `.txt` uploaded to the ephemeral S3 bucket and the agent summarised it (`s3:PutObject` is permitted for the role).
+- ✅ **Write gate** — "create opportunity" reached status `requires_approval` (no write performed).
+- ✅ **Reject** — `respond_to_approval` (decision `reject`) was accepted; the agent confirmed it would **not** create the opportunity. Nothing was written.
+
+**Protocol note (docs vs. reality):** the AWS Tools Reference shows a `tool_approval_request` content block with `toolUseId`. In practice (non-streaming), the `requires_approval` *response* carries only the proposal prose; the structured request (`tool_use_id` / `name` / `input`) is delivered via the SSE stream and is also retrievable via `get_session` (`stateType: TOOL_REQUEST`). This extension therefore (a) surfaces the proposal + a how-to-approve note on `send_message`, and (b) recovers the pending `tool_use_id` from `get_session` so `respond_to_approval` can target it. Approval also works conversationally.
 
 ## 7. Session continuation
 - Ask Claude to note the `session_id`, then in a later turn: **"Get the transcript for session `<id>`."**

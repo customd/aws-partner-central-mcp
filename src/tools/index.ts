@@ -129,7 +129,7 @@ Args:
   - response_format ('markdown' | 'json', optional, default 'markdown').
 
 Approval workflow:
-  If the agent proposes a write (create/update/submit opportunity, create/submit funding application), the response has status 'requires_approval' and lists the proposed operation plus a tool_use_id. Show the user exactly what will change, then call partner_central_respond_to_approval with that session_id and tool_use_id to approve, reject, or override. No write happens without this confirmation.
+  If the agent proposes a write (create/update/submit opportunity, create/submit funding application), the response has status 'requires_approval' and describes the proposed change in the reply text. Show the user exactly what will change. To proceed, EITHER reply in this same session with a natural-language partner_central_send_message ("approve", "reject because…", or "change X to Y"), OR call partner_central_get_session to fetch the pending action's tool_use_id and then call partner_central_respond_to_approval. No write executes without your confirmation.
 
 Returns structured content: { session_id, status ('complete'|'requires_approval'|'error'), text, approval_requests?, raw, truncated? }.
 
@@ -177,11 +177,11 @@ Errors: AuthenticationFailure/-32001 or HTTP 403 (run partner_central_verify_con
       title: "Approve, Reject, or Override a Partner Central Write Operation",
       description: `Respond to a Partner Central write operation that is awaiting approval (a send_message response with status 'requires_approval').
 
-This is the only path through which a write (create/update/submit opportunity, create/submit funding application) actually executes. Always confirm the proposed values with the user before approving.
+Use this for an explicit, structured decision. (You can also approve/reject conversationally by sending a natural-language partner_central_send_message in the same session — the agent honors it.) Always confirm the proposed values with the user before approving.
 
 Args:
   - session_id (string, required): The session that returned 'requires_approval'.
-  - tool_use_id (string, required): The tool_use_id from that approval request.
+  - tool_use_id (string, required): The pending action's tool_use_id. It is usually NOT in the send_message response (it arrives via streaming) — call partner_central_get_session(session_id) and read approval_requests[].tool_use_id to obtain it.
   - decision ('approve' | 'reject' | 'override', required): 'approve' executes as proposed; 'reject' cancels (use message to explain); 'override' executes with the modified instructions in message.
   - message (string, optional): Required for 'override', recommended for 'reject'.
   - catalog ('AWS' | 'Sandbox', optional), response_format ('markdown' | 'json', optional).

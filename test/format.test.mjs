@@ -58,6 +58,22 @@ test("markdown: approval request rendered with id + instructions", () => {
   assert.equal(r.structured.approval_requests[0].tool_use_id, "tu-1");
 });
 
+test("markdown: requires_approval without a structured id shows the generic note", () => {
+  const r = formatAgentResponse(
+    {
+      text: "I'd like to update opportunity O1 — close date 2026-03-31.",
+      status: "requires_approval",
+      sessionId: "session-1",
+      isError: false,
+      raw: {},
+    },
+    "markdown",
+  );
+  assert.match(r.text, /needs your approval/i);
+  assert.match(r.text, /partner_central_get_session/);
+  assert.match(r.text, /partner_central_respond_to_approval/);
+});
+
 test("json: returns the raw payload", () => {
   const r = formatAgentResponse(
     { text: "hi", isError: false, raw: { sessionId: "s", foo: 1 } },

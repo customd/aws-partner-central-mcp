@@ -27,6 +27,12 @@ function asRecord(v: unknown): Record<string, unknown> {
   return v && typeof v === "object" ? (v as Record<string, unknown>) : {};
 }
 
+function asRecordOrUndef(v: unknown): Record<string, unknown> | undefined {
+  return v && typeof v === "object" && !Array.isArray(v)
+    ? (v as Record<string, unknown>)
+    : undefined;
+}
+
 /**
  * Extract human-readable text from agent content blocks. Partner Central uses
  * "ASSISTANT_RESPONSE" blocks where prose is nested at block.content.text;
@@ -56,23 +62,65 @@ function extractAssistantText(content: unknown): string[] {
   return out;
 }
 
-/** Extract pending write-approval requests (status "requires_approval"). */
-function extractApprovalRequests(content: unknown): ApprovalRequest[] {
-  if (!Array.isArray(content)) return [];
-  const out: ApprovalRequest[] = [];
-  for (const block of content) {
-    if (!block || typeof block !== "object") continue;
-    const b = block as Record<string, unknown>;
-    if (b.type !== "tool_approval_request") continue;
-    const toolUseId = asString(b.toolUseId);
-    if (!toolUseId) continue;
-    const parameters =
-      b.parameters && typeof b.parameters === "object"
-        ? (b.parameters as Record<string, unknown>)
-        : undefined;
-    out.push({ toolUseId, toolName: asString(b.toolName), parameters });
+/**
+ * Recursively collect pending write-approval requests from the latest-turn
+ * content. Handles two shapes:
+ *   1. Documented: a block { type: "tool_approval_request", toolUseId, toolName, parameters }.
+ *   2. Live (observed): a pending tool-use request { tool_use_id, name, input }
+ *      surfaced when status is "requires_approval" — snake_case, no special type,
+ *      and distinct from completed results (which carry output / status:"success").
+ * Live-shape extraction is gated on `needsApproval` so that internal read-tool
+ * activity in a normal "complete" response is not mistaken for an approval.
+ */
+function collectApprovalRequests(
+  node: unknown,
+  needsApproval: boolean,
+  out: ApprovalRequest[],
+  seen: Set<string>,
+  depth = 0,
+): void {
+  if (depth > 8 || node === null || typeof node !== "object") return;
+  if (Array.isArray(node)) {
+    for (const item of node) {
+      collectApprovalRequests(item, needsApproval, out, seen, depth + 1);
+    }
+    return;
   }
-  return out;
+  const b = node as Record<string, unknown>;
+
+  if (b.type === "tool_approval_request") {
+    const id = asString(b.toolUseId) ?? asString(b.tool_use_id);
+    if (id && !seen.has(id)) {
+      seen.add(id);
+      out.push({
+        toolUseId: id,
+        toolName: asString(b.toolName) ?? asString(b.name),
+        parameters: asRecordOrUndef(b.parameters) ?? asRecordOrUndef(b.input),
+      });
+    }
+  } else if (needsApproval) {
+    const id = asString(b.tool_use_id) ?? asString(b.toolUseId);
+    const input = asRecordOrUndef(b.input) ?? asRecordOrUndef(b.parameters);
+    const isResult =
+      b.output !== undefined ||
+      b.status === "success" ||
+      b.type === "serverToolResult" ||
+      b.type === "tool_result";
+    if (id && input && !isResult && !seen.has(id)) {
+      seen.add(id);
+      out.push({
+        toolUseId: id,
+        toolName: asString(b.name) ?? asString(b.toolName),
+        parameters: input,
+      });
+    }
+  }
+
+  for (const v of Object.values(b)) {
+    if (v && typeof v === "object") {
+      collectApprovalRequests(v, needsApproval, out, seen, depth + 1);
+    }
+  }
 }
 
 /**
@@ -141,8 +189,6 @@ export function parseAgentResponse(rawResult: unknown): NormalizedAgentResponse 
     asString(inner?.stateType) ??
     asString(envelope.status);
 
-  const approvalRequests = extractApprovalRequests(blocks);
-
   let text = extractAssistantText(blocks).join("\n\n");
 
   let events: SessionEvent[] | undefined;
@@ -150,6 +196,21 @@ export function parseAgentResponse(rawResult: unknown): NormalizedAgentResponse 
   if (Array.isArray(eventSource)) {
     events = eventSource as SessionEvent[];
     if (!text) text = renderEvents(events);
+  }
+
+  const needsApproval = status === "requires_approval" || status === "TOOL_REQUEST";
+  const seen = new Set<string>();
+  const approvalRequests: ApprovalRequest[] = [];
+  collectApprovalRequests(blocks, needsApproval, approvalRequests, seen);
+  // A non-streaming sendMessage "requires_approval" response carries only the
+  // proposal prose (the structured tool request arrives via SSE). But a
+  // getSession in TOOL_REQUEST state exposes it as an event — recover the most
+  // recent pending request so respond_to_approval can target it.
+  if (approvalRequests.length === 0 && needsApproval && events) {
+    for (let i = events.length - 1; i >= 0; i -= 1) {
+      collectApprovalRequests(events[i]?.data, true, approvalRequests, seen);
+      if (approvalRequests.length > 0) break;
+    }
   }
 
   if (!text) {

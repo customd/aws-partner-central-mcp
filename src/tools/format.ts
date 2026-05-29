@@ -58,6 +58,20 @@ function renderApprovalRequests(requests: ApprovalRequest[]): string {
   return lines.join("\n");
 }
 
+/**
+ * Rendered when status is "requires_approval" but the structured tool request
+ * isn't in the response (the non-streaming case — the agent describes the
+ * proposal in prose). Tells the agent how to complete the approval.
+ */
+function renderGenericApprovalNote(): string {
+  return [
+    "",
+    "---",
+    "⚠️ **This action needs your approval before it runs.** Review the proposed changes above with the user.",
+    "To proceed, either reply in this same session with `partner_central_send_message` (\"approve\", \"reject because…\", or \"change X to Y\"), or call `partner_central_get_session` to fetch the pending action's `tool_use_id` and then `partner_central_respond_to_approval`.",
+  ].join("\n");
+}
+
 export function formatAgentResponse(
   parsed: NormalizedAgentResponse,
   format: "markdown" | "json",
@@ -79,6 +93,8 @@ export function formatAgentResponse(
     }
     if (parsed.approvalRequests && parsed.approvalRequests.length > 0) {
       lines.push(renderApprovalRequests(parsed.approvalRequests));
+    } else if (parsed.status === "requires_approval") {
+      lines.push(renderGenericApprovalNote());
     }
     text = lines.join("\n");
   }
