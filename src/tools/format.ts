@@ -38,9 +38,32 @@ function buildStructured(parsed: NormalizedAgentResponse): Record<string, unknow
   return structured;
 }
 
+function capitalizeFirst(s: string): string {
+  return s.length > 0 ? s.charAt(0).toUpperCase() + s.slice(1) : s;
+}
+
+/** Turn an internal tool name like "analyze_pipeline" / "opportunityCreator" into "Analyze pipeline". */
+function humanizeName(name: string): string {
+  const words = name
+    .replace(/[_\-]+/g, " ")
+    .replace(/([a-z0-9])([A-Z])/g, "$1 $2")
+    .trim()
+    .replace(/\s+/g, " ");
+  return capitalizeFirst(words.toLowerCase());
+}
+
+/** Friendly label for a step: prefer the agent's own activity label, else humanize the tool name. */
+function stepLabel(s: AgentActivityStep): string {
+  if (s.activity && s.activity.trim().length > 0) return capitalizeFirst(s.activity.trim());
+  if (s.name && s.name.trim().length > 0) return humanizeName(s.name);
+  return s.kind === "tool_use" ? "Working" : "Result";
+}
+
 /**
  * Render the agent's internal tool/thinking steps as a collapsed, expandable
- * trace — present but out of the way unless the reader wants it.
+ * trace — present but out of the way unless the reader wants it. Uses the
+ * agent's friendly activity labels (and humanized tool names) so no raw
+ * snake_case identifiers leak into the UI.
  */
 function renderActivity(steps: AgentActivityStep[]): string {
   const lines: string[] = [
@@ -51,12 +74,11 @@ function renderActivity(steps: AgentActivityStep[]): string {
   ];
   for (const s of steps) {
     if (s.kind === "tool_use") {
-      let line = `- **${s.name ?? "tool"}**`;
-      if (s.activity) line += ` · ${s.activity}`;
+      let line = `- **${stepLabel(s)}**`;
       if (s.detail) line += `\n  - input: \`${s.detail}\``;
       lines.push(line);
     } else {
-      let line = `- ↳ **${s.name ?? "result"}**`;
+      let line = `- ↳ ${stepLabel(s)}`;
       if (s.status) line += ` (${s.status})`;
       if (s.detail) line += `: \`${s.detail}\``;
       lines.push(line);

@@ -83,17 +83,22 @@ test("markdown: activity trace renders as a collapsed details block when shown",
     activity: [
       { kind: "tool_use", name: "analyze_pipeline", activity: "analyzing pipeline", detail: '{"stage":["Prospect"]}' },
       { kind: "tool_result", name: "analyze_pipeline", status: "success", detail: '{"total_matched":98}' },
+      { kind: "tool_use", name: "opportunity_creator", detail: "{}" },
     ],
   };
   const shown = formatAgentResponse(parsed, "markdown", true);
   assert.match(shown.text, /<details>/);
-  assert.match(shown.text, /Agent activity — 2 steps/);
-  assert.match(shown.text, /analyze_pipeline/);
+  assert.match(shown.text, /Agent activity — 3 steps/);
+  // friendly labels, not raw snake_case
+  assert.match(shown.text, /Analyzing pipeline/);
+  assert.match(shown.text, /Opportunity creator/); // humanized from a name with no activity label
+  assert.ok(!/analyze_pipeline|opportunity_creator/.test(shown.text), "no snake_case names in rendered trace");
+  // raw names still retained in structured output for programmatic use
   assert.ok(Array.isArray(shown.structured.activity));
+  assert.equal(shown.structured.activity[0].name, "analyze_pipeline");
 
   const hidden = formatAgentResponse(parsed, "markdown", false);
   assert.ok(!/<details>/.test(hidden.text), "no details block when show_activity is false");
-  // structured activity is still available programmatically even when hidden
   assert.ok(Array.isArray(hidden.structured.activity));
 });
 
