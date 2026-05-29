@@ -94,6 +94,23 @@ export interface ApprovalRequest {
 }
 
 /**
+ * One step in the agent's internal activity trace — an internal tool
+ * invocation ("serverToolUse", incl. the agent's "thinking" steps) or its
+ * result ("serverToolResult"). Surfaced as an expandable trace so users can
+ * see how the agent reached its answer.
+ */
+export interface AgentActivityStep {
+  kind: "tool_use" | "tool_result";
+  name?: string;
+  /** displayToolActivity label for a tool_use, e.g. "analyzing pipeline". */
+  activity?: string;
+  /** status for a tool_result, e.g. "success". */
+  status?: string;
+  /** Truncated input (tool_use) or output (tool_result) for context. */
+  detail?: string;
+}
+
+/**
  * A normalized, ready-to-render view of an agent response, produced by
  * response-parser.ts after unwrapping the MCP envelope and parsing the
  * inner JSON. Tool handlers consume this shape — not the raw envelope.
@@ -105,6 +122,8 @@ export interface NormalizedAgentResponse {
   text: string;
   /** Session-transcript events when the underlying call was getSession. */
   events?: SessionEvent[];
+  /** Ordered trace of the agent's internal tool/thinking steps. */
+  activity?: AgentActivityStep[];
   /**
    * Pending write operations awaiting approval (status "requires_approval").
    * Empty/undefined when no approval is needed.

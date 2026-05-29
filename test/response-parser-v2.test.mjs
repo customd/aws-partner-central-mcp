@@ -219,5 +219,44 @@ test("getSession TOOL_REQUEST: recovers pending tool_use_id from events", () => 
   assert.equal(p.approvalRequests[0].toolName, "opportunity_creator");
 });
 
+// --- Activity trace: serverToolUse / serverToolResult (incl. "thinking") ---
+const withActivity = {
+  content: [
+    {
+      type: "text",
+      text: JSON.stringify({
+        sessionId: "session-act",
+        status: "complete",
+        content: [
+          { type: "ASSISTANT_RESPONSE", content: { text: "Let me check." } },
+          { type: "serverToolUse", content: { input: "{}", displayToolActivity: "Synthesizing information...", name: "thinking", toolUseId: "t1" } },
+          { type: "serverToolResult", content: { output: "Completed", name: "thinking", toolUseId: "t1", status: "success" } },
+          { type: "serverToolUse", content: { input: '{"life_cycle_stage":["Prospect"]}', displayToolActivity: "analyzing pipeline", name: "analyze_pipeline", toolUseId: "t2" } },
+          { type: "serverToolResult", content: { output: '{"total_matched":98}', name: "analyze_pipeline", toolUseId: "t2", status: "success" } },
+          { type: "ASSISTANT_RESPONSE", content: { text: "You have 98 open opportunities." } },
+        ],
+      }),
+    },
+  ],
+};
+
+test("activity: extracts tool_use/tool_result steps in order", () => {
+  const p = parseAgentResponse(withActivity);
+  assert.ok(Array.isArray(p.activity));
+  assert.equal(p.activity.length, 4);
+  assert.equal(p.activity[0].kind, "tool_use");
+  assert.equal(p.activity[0].name, "thinking");
+  assert.equal(p.activity[0].activity, "Synthesizing information...");
+  assert.equal(p.activity[3].kind, "tool_result");
+  assert.equal(p.activity[3].name, "analyze_pipeline");
+  assert.equal(p.activity[3].status, "success");
+});
+
+test("activity: assistant prose still joined into text", () => {
+  const p = parseAgentResponse(withActivity);
+  assert.match(p.text, /Let me check\./);
+  assert.match(p.text, /98 open opportunities/);
+});
+
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail === 0 ? 0 : 1);

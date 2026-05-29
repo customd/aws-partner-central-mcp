@@ -1,5 +1,9 @@
 import { CHARACTER_LIMIT } from "../constants.js";
-import type { ApprovalRequest, NormalizedAgentResponse } from "../types.js";
+import type {
+  AgentActivityStep,
+  ApprovalRequest,
+  NormalizedAgentResponse,
+} from "../types.js";
 
 export interface FormattedToolResult {
   text: string;
@@ -26,9 +30,40 @@ function buildStructured(parsed: NormalizedAgentResponse): Record<string, unknow
   if (parsed.approvalRequests !== undefined && parsed.approvalRequests.length > 0) {
     structured.approval_requests = mapApprovalRequests(parsed.approvalRequests);
   }
+  if (parsed.activity !== undefined && parsed.activity.length > 0) {
+    structured.activity = parsed.activity;
+  }
   if (parsed.isError) structured.is_error = true;
   structured.raw = parsed.raw;
   return structured;
+}
+
+/**
+ * Render the agent's internal tool/thinking steps as a collapsed, expandable
+ * trace — present but out of the way unless the reader wants it.
+ */
+function renderActivity(steps: AgentActivityStep[]): string {
+  const lines: string[] = [
+    "",
+    "<details>",
+    `<summary>🔧 Agent activity — ${steps.length} step${steps.length === 1 ? "" : "s"}</summary>`,
+    "",
+  ];
+  for (const s of steps) {
+    if (s.kind === "tool_use") {
+      let line = `- **${s.name ?? "tool"}**`;
+      if (s.activity) line += ` · ${s.activity}`;
+      if (s.detail) line += `\n  - input: \`${s.detail}\``;
+      lines.push(line);
+    } else {
+      let line = `- ↳ **${s.name ?? "result"}**`;
+      if (s.status) line += ` (${s.status})`;
+      if (s.detail) line += `: \`${s.detail}\``;
+      lines.push(line);
+    }
+  }
+  lines.push("", "</details>");
+  return lines.join("\n");
 }
 
 /** Render a human-readable "approval required" callout for write operations. */
@@ -75,6 +110,7 @@ function renderGenericApprovalNote(): string {
 export function formatAgentResponse(
   parsed: NormalizedAgentResponse,
   format: "markdown" | "json",
+  showActivity = true,
 ): FormattedToolResult {
   const structured = buildStructured(parsed);
 
@@ -95,6 +131,9 @@ export function formatAgentResponse(
       lines.push(renderApprovalRequests(parsed.approvalRequests));
     } else if (parsed.status === "requires_approval") {
       lines.push(renderGenericApprovalNote());
+    }
+    if (showActivity && parsed.activity && parsed.activity.length > 0) {
+      lines.push(renderActivity(parsed.activity));
     }
     text = lines.join("\n");
   }

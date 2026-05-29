@@ -74,6 +74,29 @@ test("markdown: requires_approval without a structured id shows the generic note
   assert.match(r.text, /partner_central_respond_to_approval/);
 });
 
+test("markdown: activity trace renders as a collapsed details block when shown", () => {
+  const parsed = {
+    text: "You have 98 open opportunities.",
+    status: "complete",
+    isError: false,
+    raw: {},
+    activity: [
+      { kind: "tool_use", name: "analyze_pipeline", activity: "analyzing pipeline", detail: '{"stage":["Prospect"]}' },
+      { kind: "tool_result", name: "analyze_pipeline", status: "success", detail: '{"total_matched":98}' },
+    ],
+  };
+  const shown = formatAgentResponse(parsed, "markdown", true);
+  assert.match(shown.text, /<details>/);
+  assert.match(shown.text, /Agent activity — 2 steps/);
+  assert.match(shown.text, /analyze_pipeline/);
+  assert.ok(Array.isArray(shown.structured.activity));
+
+  const hidden = formatAgentResponse(parsed, "markdown", false);
+  assert.ok(!/<details>/.test(hidden.text), "no details block when show_activity is false");
+  // structured activity is still available programmatically even when hidden
+  assert.ok(Array.isArray(hidden.structured.activity));
+});
+
 test("json: returns the raw payload", () => {
   const r = formatAgentResponse(
     { text: "hi", isError: false, raw: { sessionId: "s", foo: 1 } },

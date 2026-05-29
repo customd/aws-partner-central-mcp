@@ -32,6 +32,18 @@ export const AgentResponseOutputSchema = z.object({
     .describe(
       "Pending write operations awaiting approval. Respond with partner_central_respond_to_approval.",
     ),
+  activity: z
+    .array(
+      z.object({
+        kind: z.string(),
+        name: z.string().optional(),
+        activity: z.string().optional(),
+        status: z.string().optional(),
+        detail: z.string().optional(),
+      }),
+    )
+    .optional()
+    .describe("Trace of the agent's internal tool/thinking steps."),
   is_error: z.boolean().optional(),
   truncated: z.boolean().optional(),
   original_length: z.number().optional(),

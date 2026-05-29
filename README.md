@@ -94,6 +94,12 @@ This means you can review and correct any write before it touches your live part
 
 ---
 
+## Seeing the agent's reasoning
+
+Each reply can include a collapsed **"🔧 Agent activity"** trace showing the internal tools the Partner Central agent ran (e.g. `analyze_pipeline`, `opportunity_creator`) and its `thinking` steps, with their inputs/outputs. It's on by default and tucked inside an expandable `<details>` block — open it when you want to see *how* the agent reached its answer, or pass `show_activity: false` to omit it. (The complete raw payload is always available via `response_format: "json"`.)
+
+---
+
 ## Tools exposed to Claude
 
 | Tool | What it does | Annotation |

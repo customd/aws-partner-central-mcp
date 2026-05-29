@@ -1,4 +1,5 @@
 import type {
+  AgentActivityStep,
   ApprovalRequest,
   NormalizedAgentResponse,
   SessionEvent,
@@ -123,6 +124,44 @@ function collectApprovalRequests(
   }
 }
 
+function previewValue(v: unknown, max = 160): string | undefined {
+  if (v === undefined || v === null) return undefined;
+  const s = typeof v === "string" ? v : JSON.stringify(v);
+  if (!s || s === "{}") return undefined;
+  return s.length > max ? s.slice(0, max) + "…" : s;
+}
+
+/**
+ * Extract the agent's internal activity trace (serverToolUse / serverToolResult,
+ * including "thinking" steps) from the latest-turn content blocks, in order.
+ * For these block types the fields are nested under `block.content`.
+ */
+function extractActivity(content: unknown): AgentActivityStep[] {
+  if (!Array.isArray(content)) return [];
+  const out: AgentActivityStep[] = [];
+  for (const block of content) {
+    if (!block || typeof block !== "object") continue;
+    const b = block as Record<string, unknown>;
+    const c = asRecord(b.content);
+    if (b.type === "serverToolUse") {
+      out.push({
+        kind: "tool_use",
+        name: asString(c.name) ?? asString(b.name),
+        activity: asString(c.displayToolActivity),
+        detail: previewValue(c.input),
+      });
+    } else if (b.type === "serverToolResult") {
+      out.push({
+        kind: "tool_result",
+        name: asString(c.name) ?? asString(b.name),
+        status: asString(c.status),
+        detail: previewValue(c.output),
+      });
+    }
+  }
+  return out;
+}
+
 /**
  * Render a `getSession` events array as markdown-friendly text. Each event
  * has `data.role` and `data.content`; content can be a string or an array
@@ -222,12 +261,15 @@ export function parseAgentResponse(rawResult: unknown): NormalizedAgentResponse 
     text = firstText.text;
   }
 
+  const activity = extractActivity(blocks);
+
   return {
     sessionId,
     status,
     text,
     events,
     approvalRequests: approvalRequests.length > 0 ? approvalRequests : undefined,
+    activity: activity.length > 0 ? activity : undefined,
     isError,
     raw: inner ?? envelope,
   };

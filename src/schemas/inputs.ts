@@ -18,6 +18,13 @@ export const ResponseFormatSchema = z
     "Output format: 'markdown' for a human-readable rendering, 'json' for the raw structured response.",
   );
 
+export const ShowActivitySchema = z
+  .boolean()
+  .default(true)
+  .describe(
+    "Include a collapsed, expandable trace of the agent's internal tool steps and 'thinking' in the reply (markdown only). Set false to omit it.",
+  );
+
 const SessionIdSchema = z
   .string()
   .min(1, "session_id must not be empty")
@@ -53,6 +60,7 @@ export const SendMessageInputSchema = z
       "Continue an existing conversation. Sessions expire 48 hours after creation. Must match the catalog the session was created in.",
     ),
     response_format: ResponseFormatSchema,
+    show_activity: ShowActivitySchema,
   })
   .strict();
 
@@ -99,6 +107,7 @@ export const RespondToApprovalInputSchema = z
       "Catalog the session belongs to. Omit to use the server's configured default.",
     ),
     response_format: ResponseFormatSchema,
+    show_activity: ShowActivitySchema,
   })
   .strict();
 

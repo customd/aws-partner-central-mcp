@@ -127,6 +127,7 @@ Args:
   - catalog ('AWS' | 'Sandbox', optional): Override the default catalog. Sessions are catalog-scoped.
   - session_id (string, optional): Continue an existing conversation. Sessions expire 48 hours after creation.
   - response_format ('markdown' | 'json', optional, default 'markdown').
+  - show_activity (boolean, optional, default true): append a collapsed, expandable trace of the agent's internal tool steps and 'thinking'. Set false to hide it.
 
 Approval workflow:
   If the agent proposes a write (create/update/submit opportunity, create/submit funding application), the response has status 'requires_approval' and describes the proposed change in the reply text. Show the user exactly what will change. To proceed, EITHER reply in this same session with a natural-language partner_central_send_message ("approve", "reject because…", or "change X to Y"), OR call partner_central_get_session to fetch the pending action's tool_use_id and then call partner_central_respond_to_approval. No write executes without your confirmation.
@@ -163,7 +164,11 @@ Errors: AuthenticationFailure/-32001 or HTTP 403 (run partner_central_verify_con
         });
         const raw = await client.callTool("sendMessage", args);
         const parsed = parseAgentResponse(raw);
-        const formatted = formatAgentResponse(parsed, params.response_format);
+        const formatted = formatAgentResponse(
+          parsed,
+          params.response_format,
+          params.show_activity,
+        );
         return successResult(formatted.text, formatted.structured);
       } catch (err) {
         return handleError(err);
@@ -215,7 +220,11 @@ Returns the agent's response after the decision is applied (same shape as send_m
           sessionId: params.session_id,
         });
         const parsed = parseAgentResponse(raw);
-        const formatted = formatAgentResponse(parsed, params.response_format);
+        const formatted = formatAgentResponse(
+          parsed,
+          params.response_format,
+          params.show_activity,
+        );
         return successResult(formatted.text, formatted.structured);
       } catch (err) {
         return handleError(err);
