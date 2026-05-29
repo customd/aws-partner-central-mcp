@@ -1,11 +1,11 @@
 # Sandbox Acceptance Test
 
-Run this after installing **`aws-partner-central.mcpb` (v1.0.0)** in Claude Desktop with
+Run this after installing **`aws-partner-central.mcpb` (v1.0.1)** in Claude Desktop with
 **Default Catalog = `Sandbox`**. Each step is a prompt you give Claude; the *expected result*
 confirms a capability. The `Sandbox` catalog is isolated from production partner data, so
 writes here are safe.
 
-> Automated unit + protocol coverage (55 tests + a stdio `tools/list` smoke test) already
+> Automated unit + protocol coverage (65 tests + a stdio `tools/list` smoke test) already
 > passes in CI/locally; this checklist validates the live end-to-end behaviour that needs a
 > real AWS Partner Central session.
 
@@ -46,7 +46,7 @@ writes here are safe.
 
 ---
 
-## Live results — 2026-05-29 (Sandbox, v1.0.0 build)
+## Live results — 2026-05-29 (Sandbox, v1.0.1 build)
 Driven end-to-end against the live endpoint:
 - ✅ **Connection / auth / SigV4 / endpoint** — `verify_connection` OK.
 - ✅ **Read** — agent answered a capability query.

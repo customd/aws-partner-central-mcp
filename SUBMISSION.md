@@ -5,7 +5,7 @@ Copy-paste content for the **MCP Directory Server Review Form** (linked from
 See [DISTRIBUTION.md](./DISTRIBUTION.md) Part C for the requirements rationale.
 
 > **Pre-flight:** `npx mcpb validate manifest.json` passes, every tool is annotated, `PRIVACY.md`
-> is public, README has setup + ≥3 examples + support contact, and the v1.0.0 `.mcpb` is attached
+> is public, README has setup + ≥3 examples + support contact, and the v1.0.1 `.mcpb` is attached
 > to the GitHub release. ✅ all current.
 
 ---
@@ -53,7 +53,7 @@ This is a **local MCPB desktop extension**, not a remote OAuth connector. It aut
 
 **Support contact:** <https://github.com/customd/aws-partner-central-mcp/issues>
 
-**Repository / artifact:** <https://github.com/customd/aws-partner-central-mcp> — v1.0.0 release has the signed-ready `.mcpb`.
+**Repository / artifact:** <https://github.com/customd/aws-partner-central-mcp> — v1.0.1 release has the signed-ready `.mcpb`.
 
 **Test access for reviewers:**
 Live use requires an AWS Partner Central account enrolled via IAM Identity Center, which reviewers won't have by default. To exercise it: (a) the `partner_central_verify_connection` tool runs a benign check against the **Sandbox** catalog; (b) we can provide a temporary scoped test SSO account / live demo on request. Please contact us via the support URL to arrange reviewer access — happy to screen-share a Sandbox walkthrough.
