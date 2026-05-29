@@ -249,7 +249,9 @@ See [DISTRIBUTION.md](./DISTRIBUTION.md) for how to publish this to the Claude e
 
 ---
 
-## Security & privacy
+## Privacy Policy & security
+
+See **[PRIVACY.md](./PRIVACY.md)** for the full privacy policy (what is processed, what is stored locally and where, what is transmitted and to whom, retention, and your controls). In short:
 
 - No long-lived AWS access keys are stored or transmitted.
 - SSO access tokens are cached at `~/.aws/sso/cache/<sha1>.json` with `0600` permissions; the cache directory is tightened to `0700`.
