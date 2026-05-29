@@ -6,6 +6,12 @@ import {
   PartnerCentralError,
 } from "../services/partner-central-client.js";
 import { AttachmentError } from "../services/attachment-uploader.js";
+import {
+  NeedsSelectionError,
+  NoAccessError,
+  type AccountRoleOption,
+  type ElicitAccountRole,
+} from "../services/account-role.js";
 import { parseAgentResponse } from "../services/response-parser.js";
 import {
   GetSessionInputSchema,
@@ -99,17 +105,75 @@ function handleError(err: unknown): ReturnType<typeof errorResult> {
   if (err instanceof AttachmentError) {
     return errorResult(`Attachment error: ${err.message}`);
   }
+  if (err instanceof NeedsSelectionError) {
+    const lines = [
+      "You can access more than one AWS Partner Central account/role, and this client couldn't show a picker.",
+      "Choose one and set it in Claude Desktop → Settings → Extensions → AWS Partner Central (Account ID and/or Role Name), then try again. Available options:",
+      ...err.options.map(
+        (o, i) => `  ${i + 1}. ${o.label}   (account ${o.accountId}, role ${o.roleName})`,
+      ),
+    ];
+    return errorResult(lines.join("\n"));
+  }
+  if (err instanceof NoAccessError) {
+    return errorResult(err.message);
+  }
   if (err instanceof PartnerCentralError) {
     return errorResult(describePartnerCentralError(err));
   }
   return errorResult(`Unexpected error: ${(err as Error).message ?? String(err)}`);
 }
 
+/**
+ * Build the account/role picker. If the connected client supports MCP
+ * elicitation, present a single-select form (rendered as a dropdown);
+ * otherwise return null so the caller can surface the options as text.
+ */
+function makeAccountRoleElicitor(server: McpServer): ElicitAccountRole {
+  return async (options: AccountRoleOption[]) => {
+    const caps = server.server.getClientCapabilities?.();
+    if (!caps?.elicitation) {
+      logger.debug("Client lacks elicitation capability — surfacing options as text");
+      return null;
+    }
+    const labels = options.map((o) => o.label);
+    try {
+      const result = await server.server.elicitInput({
+        message:
+          "You can access more than one AWS Partner Central account/role. Which should this extension use?",
+        requestedSchema: {
+          type: "object",
+          properties: {
+            selection: {
+              type: "string",
+              title: "Account / role",
+              description: "Choose the AWS account and permission-set role to use.",
+              enum: labels,
+            },
+          },
+          required: ["selection"],
+        },
+      });
+      if (result.action !== "accept") return null;
+      const chosen = result.content?.selection;
+      const picked = options.find((o) => o.label === chosen);
+      return picked ? { accountId: picked.accountId, roleName: picked.roleName } : null;
+    } catch (err) {
+      logger.warn("Elicitation failed; falling back to text selection", {
+        error: (err as Error).message,
+      });
+      return null;
+    }
+  };
+}
+
 export function registerTools(
   server: McpServer,
   config: PartnerCentralConfig,
 ): void {
-  const client = new PartnerCentralClient(config);
+  const client = new PartnerCentralClient(config, {
+    elicit: makeAccountRoleElicitor(server),
+  });
 
   server.registerTool(
     "partner_central_send_message",
@@ -302,22 +366,35 @@ Returns structured content: { ok, catalog, config: { sso_start_url, account_id (
     },
     async (params: VerifyConnectionInput) => {
       const catalog = params.catalog ?? CATALOG_SANDBOX;
-      const configSummary = {
-        sso_start_url: config.sso.startUrl,
-        account_id: config.sso.accountId.replace(/\d(?=\d{4})/g, "*"),
-        role_name: config.sso.roleName,
-        region: config.region,
-        default_catalog: config.defaultCatalog,
+      const maskId = (id?: string): string =>
+        id ? id.replace(/\d(?=\d{4})/g, "*") : "(auto-detect on sign-in)";
+      // Built after the call so it reflects the resolved/auto-detected identity.
+      const buildSetup = (): {
+        summary: Record<string, string>;
+        lines: string[];
+      } => {
+        const resolved = client.getResolvedIdentity();
+        const accountId = resolved?.accountId ?? config.sso.accountId;
+        const roleName = resolved?.roleName ?? config.sso.roleName;
+        const tag = resolved ? " (auto-detected)" : "";
+        const summary = {
+          sso_start_url: config.sso.startUrl,
+          account_id: maskId(accountId),
+          role_name: roleName ?? "(auto-detect on sign-in)",
+          region: config.region,
+          default_catalog: config.defaultCatalog,
+        };
+        const lines = [
+          "",
+          "Setup:",
+          `- SSO start URL: ${summary.sso_start_url}`,
+          `- Account ID: ${summary.account_id}${tag}`,
+          `- Role name: ${summary.role_name}${tag}`,
+          `- Region: ${summary.region}`,
+          `- Default catalog: ${summary.default_catalog}`,
+        ];
+        return { summary, lines };
       };
-      const setupLines = [
-        "",
-        "Configured setup:",
-        `- SSO start URL: ${configSummary.sso_start_url}`,
-        `- Account ID: ${configSummary.account_id}`,
-        `- Role name: ${configSummary.role_name}`,
-        `- Region: ${configSummary.region}`,
-        `- Default catalog: ${configSummary.default_catalog}`,
-      ];
       try {
         const raw = await client.callTool("sendMessage", {
           content: [
@@ -329,10 +406,11 @@ Returns structured content: { ok, catalog, config: { sso_start_url, account_id (
           catalog,
         });
         const parsed = parseAgentResponse(raw);
+        const { summary, lines } = buildSetup();
         const structured = {
           ok: true,
           catalog,
-          config: configSummary,
+          config: summary,
           session_id: parsed.sessionId,
           agent_status: parsed.status,
           preview: parsed.text.slice(0, 500),
@@ -343,28 +421,37 @@ Returns structured content: { ok, catalog, config: { sso_start_url, account_id (
           structured.session_id ? `- Session: ${structured.session_id}` : null,
           structured.agent_status ? `- Status: ${structured.agent_status}` : null,
           parsed.text ? `- Agent reply: ${parsed.text.slice(0, 200)}` : null,
-          ...setupLines,
+          ...lines,
         ]
           .filter((line): line is string => line !== null)
           .join("\n");
         return successResult(text, structured);
       } catch (err) {
-        const message =
-          err instanceof PartnerCentralError
-            ? describePartnerCentralError(err)
-            : `Unexpected error: ${(err as Error).message ?? String(err)}`;
+        let message: string;
+        if (err instanceof NeedsSelectionError) {
+          message =
+            "Multiple accounts/roles are available and this client couldn't show a picker. Set one in the extension settings. Options: " +
+            err.options.map((o) => o.label).join(" | ");
+        } else if (err instanceof NoAccessError) {
+          message = err.message;
+        } else if (err instanceof PartnerCentralError) {
+          message = describePartnerCentralError(err);
+        } else {
+          message = `Unexpected error: ${(err as Error).message ?? String(err)}`;
+        }
+        const { summary, lines } = buildSetup();
         const structured = {
           ok: false,
           catalog,
-          config: configSummary,
+          config: summary,
           error: message,
         };
         const text = [
           "❌ Partner Central connection failed.",
           message,
-          ...setupLines,
+          ...lines,
           "",
-          "If a value above looks wrong, edit it in Claude Desktop → Settings → Extensions → AWS Partner Central. The SSO start URL, account ID, and role name all come from your AWS access portal.",
+          "If a value above looks wrong, edit it in Claude Desktop → Settings → Extensions → AWS Partner Central. The SSO start URL (and, if set, account ID / role name) come from your AWS access portal.",
         ].join("\n");
         return {
           isError: true,

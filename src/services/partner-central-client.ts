@@ -9,6 +9,7 @@ import {
   SOURCE_PRODUCT,
 } from "../constants.js";
 import { logger } from "../logger.js";
+import type { AccountRoleSelection, ElicitAccountRole } from "./account-role.js";
 import { uploadDocument, validateAttachmentPaths } from "./attachment-uploader.js";
 import { signRequest } from "./signer.js";
 import { SsoCredentialResolver } from "./sso-auth.js";
@@ -18,6 +19,11 @@ import type {
   JsonRpcResponse,
   PartnerCentralConfig,
 } from "../types.js";
+
+export interface PartnerCentralClientOptions {
+  /** Picker used to resolve an ambiguous account/role (e.g. an elicitation dropdown). */
+  elicit?: ElicitAccountRole;
+}
 
 export class PartnerCentralError extends Error {
   constructor(
@@ -64,8 +70,16 @@ export class PartnerCentralClient {
   private requestId = 0;
   private readonly resolver: SsoCredentialResolver;
 
-  constructor(private readonly config: PartnerCentralConfig) {
-    this.resolver = new SsoCredentialResolver(config.sso);
+  constructor(
+    private readonly config: PartnerCentralConfig,
+    options: PartnerCentralClientOptions = {},
+  ) {
+    this.resolver = new SsoCredentialResolver(config.sso, options.elicit);
+  }
+
+  /** The effective account/role once resolved — for surfacing in diagnostics. */
+  getResolvedIdentity(): AccountRoleSelection | null {
+    return this.resolver.getResolvedIdentity();
   }
 
   private nextId(): number {
@@ -99,14 +113,23 @@ export class PartnerCentralClient {
    */
   async uploadDocuments(filePaths: string[]): Promise<DocumentContentBlock[]> {
     validateAttachmentPaths(filePaths);
+    // resolve() also resolves the effective account/role; uploads go under the
+    // resolved account-ID prefix in the ephemeral bucket.
     const credentials = await this.resolver.resolve();
+    const accountId =
+      this.resolver.getResolvedIdentity()?.accountId ?? this.config.sso.accountId;
+    if (!accountId) {
+      throw new PartnerCentralError(
+        "Could not determine the AWS account ID for the attachment upload.",
+      );
+    }
     const blocks: DocumentContentBlock[] = [];
     for (const filePath of filePaths) {
       blocks.push(
         await uploadDocument({
           credentials,
           region: this.config.region,
-          accountId: this.config.sso.accountId,
+          accountId,
           filePath,
         }),
       );

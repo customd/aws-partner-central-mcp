@@ -1,6 +1,6 @@
 # Sandbox Acceptance Test
 
-Run this after installing **`aws-partner-central.mcpb` (v1.0.2)** in Claude Desktop with
+Run this after installing **`aws-partner-central.mcpb` (v1.0.3)** in Claude Desktop with
 **Default Catalog = `Sandbox`**. Each step is a prompt you give Claude; the *expected result*
 confirms a capability. The `Sandbox` catalog is isolated from production partner data, so
 writes here are safe.
@@ -46,7 +46,7 @@ writes here are safe.
 
 ---
 
-## Live results — 2026-05-29 (Sandbox, v1.0.2 build)
+## Live results — 2026-05-29 (Sandbox, v1.0.3 build)
 Driven end-to-end against the live endpoint:
 - ✅ **Connection / auth / SigV4 / endpoint** — `verify_connection` OK.
 - ✅ **Read** — agent answered a capability query.

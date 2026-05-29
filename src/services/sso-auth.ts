@@ -16,10 +16,19 @@ import {
 import {
   SSOClient,
   GetRoleCredentialsCommand,
+  ListAccountsCommand,
+  ListAccountRolesCommand,
   UnauthorizedException,
 } from "@aws-sdk/client-sso";
 
 import { logger } from "../logger.js";
+import {
+  resolveAccountRole,
+  readSelection,
+  writeSelection,
+  type AccountRoleSelection,
+  type ElicitAccountRole,
+} from "./account-role.js";
 import type { AwsCredentials, SsoConfig } from "../types.js";
 
 const execFileAsync = promisify(execFile);
@@ -267,16 +276,13 @@ async function getOrAcquireSsoToken(config: SsoConfig): Promise<string> {
 }
 
 async function fetchRoleCredentials(
-  config: SsoConfig,
+  sso: SSOClient,
   accessToken: string,
+  accountId: string,
+  roleName: string,
 ): Promise<AwsCredentials> {
-  const sso = new SSOClient({ region: config.region });
   const resp = await sso.send(
-    new GetRoleCredentialsCommand({
-      accessToken,
-      accountId: config.accountId,
-      roleName: config.roleName,
-    }),
+    new GetRoleCredentialsCommand({ accessToken, accountId, roleName }),
   );
   const c = resp.roleCredentials;
   if (
@@ -296,11 +302,57 @@ async function fetchRoleCredentials(
   };
 }
 
+/** Enumerate the accounts the signed-in user can access (paginated). */
+async function listAccounts(
+  sso: SSOClient,
+  accessToken: string,
+): Promise<Array<{ accountId: string; accountName?: string }>> {
+  const out: Array<{ accountId: string; accountName?: string }> = [];
+  let nextToken: string | undefined;
+  do {
+    const resp = await sso.send(new ListAccountsCommand({ accessToken, nextToken }));
+    for (const a of resp.accountList ?? []) {
+      if (a.accountId) out.push({ accountId: a.accountId, accountName: a.accountName });
+    }
+    nextToken = resp.nextToken;
+  } while (nextToken);
+  return out;
+}
+
+/** Enumerate the role names available to the user in an account (paginated). */
+async function listAccountRoles(
+  sso: SSOClient,
+  accessToken: string,
+  accountId: string,
+): Promise<string[]> {
+  const out: string[] = [];
+  let nextToken: string | undefined;
+  do {
+    const resp = await sso.send(
+      new ListAccountRolesCommand({ accessToken, accountId, nextToken }),
+    );
+    for (const r of resp.roleList ?? []) {
+      if (r.roleName) out.push(r.roleName);
+    }
+    nextToken = resp.nextToken;
+  } while (nextToken);
+  return out;
+}
+
 export class SsoCredentialResolver {
   private cached: AwsCredentials | null = null;
   private inflight: Promise<AwsCredentials> | null = null;
+  private resolvedIdentity: AccountRoleSelection | null = null;
 
-  constructor(private readonly config: SsoConfig) {}
+  constructor(
+    private readonly config: SsoConfig,
+    private readonly elicit?: ElicitAccountRole,
+  ) {}
+
+  /** The effective account/role once resolved (explicit, persisted, or discovered). */
+  getResolvedIdentity(): AccountRoleSelection | null {
+    return this.resolvedIdentity;
+  }
 
   /**
    * Resolve AWS temporary credentials, sharing the in-flight refresh among
@@ -350,17 +402,49 @@ export class SsoCredentialResolver {
   private async refresh(): Promise<AwsCredentials> {
     let token = await getOrAcquireSsoToken(this.config);
     try {
-      return await fetchRoleCredentials(this.config, token);
+      return await this.discoverAndFetch(token);
     } catch (err) {
       if (err instanceof UnauthorizedException) {
         logger.warn(
-          "SSO access token rejected by sso:GetRoleCredentials — re-running device flow",
+          "SSO access token rejected — re-running device flow",
         );
         await deleteTokenCache(this.config.startUrl);
         token = await getOrAcquireSsoToken(this.config);
-        return await fetchRoleCredentials(this.config, token);
+        return await this.discoverAndFetch(token);
       }
       throw err;
+    }
+  }
+
+  /**
+   * Resolve the effective account/role (once), then fetch temporary
+   * credentials for it. Account/role come from explicit config, a persisted
+   * choice, or live discovery (sso:ListAccounts/ListAccountRoles) — with an
+   * elicitation picker when the choice is ambiguous.
+   */
+  private async discoverAndFetch(token: string): Promise<AwsCredentials> {
+    const sso = new SSOClient({ region: this.config.region });
+    try {
+      if (!this.resolvedIdentity) {
+        this.resolvedIdentity = await resolveAccountRole({
+          startUrl: this.config.startUrl,
+          configAccountId: this.config.accountId,
+          configRoleName: this.config.roleName,
+          listAccounts: () => listAccounts(sso, token),
+          listAccountRoles: (accountId) => listAccountRoles(sso, token, accountId),
+          readSelection,
+          writeSelection,
+          elicit: this.elicit,
+        });
+      }
+      return await fetchRoleCredentials(
+        sso,
+        token,
+        this.resolvedIdentity.accountId,
+        this.resolvedIdentity.roleName,
+      );
+    } finally {
+      sso.destroy();
     }
   }
 }

@@ -22,12 +22,12 @@ A drag-and-drop Claude Desktop extension that connects Claude to the **AWS Partn
 
    | Field | What to enter | Example |
    |---|---|---|
-   | **AWS SSO Start URL** | Your IAM Identity Center portal URL | `https://your-org.awsapps.com/start` |
-   | **AWS Account ID** | The 12-digit account ID that has Partner Central enrolled | `123456789012` |
-   | **AWS SSO Role Name** | The permission-set / role name from your AWS access portal (your admin set it up — the name varies by org) | e.g. `PartnerCentral-Executives` |
+   | **AWS SSO Start URL** | Your IAM Identity Center portal URL (the only required field) | `https://your-org.awsapps.com/start` |
+   | **AWS Account ID** *(optional)* | Leave blank to auto-detect. Set the 12-digit ID only to override. | `123456789012` |
+   | **AWS SSO Role Name** *(optional)* | Leave blank to auto-detect. Set it only to override (the role from your AWS access portal). | e.g. `PartnerCentral-Executives` |
    | **Default Catalog** *(optional)* | `AWS` for live data, `Sandbox` for testing (defaults to `AWS`) | `AWS` |
 
-   > Only three fields are required — Region is fixed to `us-east-1`, and verbose logging is an env var (`LOG_LEVEL`) rather than a form field. After installing, ask Claude to **"verify my Partner Central connection"**: it confirms sign-in and echoes your settings back so you can check them.
+   > **Usually you only enter the Start URL.** After sign-in, the extension auto-detects your AWS account and role from the SSO session: if you have a single role it's used automatically; if you can access several, you'll get a **dropdown to pick one** (and it's remembered). Set Account ID / Role only to override. Region is fixed to `us-east-1`. Tip: after installing, ask Claude to **"verify my Partner Central connection"** — it confirms sign-in and shows the detected account/role.
 
 6. Click **Install**.
 

@@ -2,7 +2,7 @@
   "manifest_version": "0.3",
   "name": "aws-partner-central",
   "display_name": "AWS Partner Central",
-  "version": "1.0.2",
+  "version": "1.0.3",
   "description": "Talk to the AWS Partner Central 3.0 agent from Claude. Handles AWS IAM Identity Center sign-in and SigV4 signing for you.",
   "long_description": "This extension connects Claude Desktop to the AWS Partner Central 3.0 agent endpoint. Ask natural-language questions about your AWS partner account — opportunities, ACE deal registrations, invitations, partner programs, certifications, training — and Claude can answer using your live Partner Central data.\n\nSign-in is handled via AWS IAM Identity Center (formerly AWS SSO). The first time the extension is used in a session, your default browser opens to authorize this server. Subsequent calls reuse the cached token (valid for ~8 hours) until it expires.\n\nNo AWS CLI installation required. No long-lived access keys stored. Sessions are catalog-scoped (AWS vs Sandbox) and expire after 48 hours.",
   "author": {
@@ -54,15 +54,15 @@
     },
     "sso_account_id": {
       "type": "string",
-      "title": "AWS Account ID",
-      "description": "The 12-digit AWS account ID that has Partner Central enrolled. In the AWS access portal, click the account; the ID is shown under the name.",
-      "required": true
+      "title": "AWS Account ID (optional)",
+      "description": "Leave blank to auto-detect after sign-in. Only set the 12-digit account ID to override — e.g. if your sign-in can reach several accounts.",
+      "required": false
     },
     "sso_role_name": {
       "type": "string",
-      "title": "AWS SSO Role Name",
-      "description": "The permission-set / role name your AWS administrator set up for Partner Central — it appears as a 'role' under your account in the AWS access portal. The name varies by organisation (for example it might be called 'PartnerCentral-Executives', but yours may differ).",
-      "required": true
+      "title": "AWS SSO Role Name (optional)",
+      "description": "Leave blank to auto-detect after sign-in: if you have a single role it's used automatically, otherwise you'll be asked to pick one. Only set it to override (the permission-set / role name from your AWS access portal).",
+      "required": false
     },
     "default_catalog": {
       "type": "string",

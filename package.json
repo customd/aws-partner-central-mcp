@@ -1,6 +1,6 @@
 {
   "name": "aws-partner-central-mcp-server",
-  "version": "1.0.2",
+  "version": "1.0.3",
   "description": "MCP server bridging Claude Desktop to the AWS Partner Central 3.0 agent endpoint. Handles AWS IAM Identity Center (SSO) authentication and SigV4 request signing transparently.",
   "type": "module",
   "main": "server/index.js",

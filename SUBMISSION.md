@@ -7,7 +7,7 @@ Copy-paste content for the **Desktop Extensions submission form**.
 - Local desktop extensions (MCPB) **are** eligible for the directory.
 - Review time varies with queue; escalations: `mcp-review@anthropic.com`.
 
-> **Pre-flight (all current ✅):** `npx mcpb validate manifest.json` passes; every tool has a `title` + `readOnlyHint`/`destructiveHint`; README has a **Privacy Policy** section and `manifest.json` has a `privacy_policies` array; `PRIVACY.md` is public; README has setup + ≥3 examples + support contact; the **v1.0.2** `.mcpb` is attached to the GitHub release.
+> **Pre-flight (all current ✅):** `npx mcpb validate manifest.json` passes; every tool has a `title` + `readOnlyHint`/`destructiveHint`; README has a **Privacy Policy** section and `manifest.json` has a `privacy_policies` array; `PRIVACY.md` is public; README has setup + ≥3 examples + support contact; the **v1.0.3** `.mcpb` is attached to the GitHub release.
 
 ---
 
@@ -30,8 +30,8 @@ A Claude Desktop extension (local MCPB) that bridges Claude to AWS's hosted Part
 
 **Repository / documentation:** <https://github.com/customd/aws-partner-central-mcp> (README is the public docs link)
 
-**Artifact:** v1.0.2 release — `aws-partner-central.mcpb` attached:
-<https://github.com/customd/aws-partner-central-mcp/releases/tag/v1.0.2>
+**Artifact:** v1.0.3 release — `aws-partner-central.mcpb` attached:
+<https://github.com/customd/aws-partner-central-mcp/releases/tag/v1.0.3>
 
 **Authentication type:** AWS IAM Identity Center (AWS SSO) device-authorization flow + AWS SigV4 request signing. **No Claude OAuth** and **no claude.ai/claude.com OAuth callback URLs** apply — auth is between the user's machine and their own AWS account.
 
@@ -47,11 +47,11 @@ A Claude Desktop extension (local MCPB) that bridges Claude to AWS's hosted Part
 
 **Setup instructions:**
 1. Install the `.mcpb` in Claude Desktop → Settings → Extensions.
-2. Fill the config dialog: AWS SSO start URL, 12-digit account ID, SSO role name, and (optional) default catalog. Three required fields; region is fixed to `us-east-1`.
+2. Fill the config dialog: **AWS SSO start URL** is the only required field. Account ID, role name, and default catalog are optional — account/role are auto-detected from the SSO session after sign-in (a dropdown appears if several are available). Region is fixed to `us-east-1`.
 3. On first use, the browser opens for AWS IAM Identity Center sign-in → Allow access.
 IAM-permission guidance: README → "IAM permissions".
 
-**Data handling:** Processes only the user's prompts and the agent's responses, scoped to the authenticated AWS principal. Stored locally: only the AWS SSO access token cache (`~/.aws/sso/cache/`, `0600`, ~8h) — same as the AWS CLI. Temporary role credentials are in-memory only. Optional file attachments are uploaded to an AWS-managed ephemeral S3 bucket for analysis. **No telemetry, no analytics, no third-party services.** Full policy: PRIVACY.md.
+**Data handling:** Processes only the user's prompts and the agent's responses, scoped to the authenticated AWS principal. To auto-detect the account/role it calls `sso:ListAccounts`/`sso:ListAccountRoles` (the user's own access list; no extra IAM permissions, no local files read). Stored locally (both `0600`): the AWS SSO access token cache (`~/.aws/sso/cache/`, ~8h, same as the AWS CLI) and a small account/role selection file (`~/.aws-partner-central/`, non-secret identifiers only). Temporary role credentials are in-memory only. Optional file attachments are uploaded to an AWS-managed ephemeral S3 bucket for analysis. **No telemetry, no analytics, no third-party services.** Full policy: PRIVACY.md.
 
 **Third-party connections:** AWS only (Partner Central agents MCP endpoint + AWS IAM Identity Center / OIDC + AWS S3 for attachments). None else.
 
@@ -79,6 +79,6 @@ Please reach out and we'll arrange reviewer access promptly.
 
 ## Before you submit — final checks
 - [ ] (Recommended) Smoke-test the installed `.mcpb` on **Windows** too, or state "macOS-tested" in the form (done above).
-- [ ] Confirm the v1.0.2 release `.mcpb` downloads and installs cleanly.
+- [ ] Confirm the v1.0.3 release `.mcpb` downloads and installs cleanly.
 - [ ] Have a plan ready for the **reviewer test-access** ask (Sandbox demo or temp SSO).
 - [ ] Privacy policy URL resolves (200) and README has the Privacy Policy section. ✅

@@ -103,12 +103,14 @@ export function loadConfig(): PartnerCentralConfig {
   const startUrl = requireEnv("AWS_SSO_START_URL", "AWS SSO start URL");
   validateStartUrl(startUrl);
 
-  const accountId = requireEnv("AWS_SSO_ACCOUNT_ID", "AWS SSO account ID");
-  validateAccountId(accountId);
+  // Account ID and role name are OPTIONAL — when omitted they are
+  // auto-discovered from the SSO session (sso:ListAccounts/ListAccountRoles).
+  // When provided they are validated and used as an explicit override.
+  const accountId = readEnv("AWS_SSO_ACCOUNT_ID");
+  if (accountId !== undefined) validateAccountId(accountId);
 
-  const roleName = validateRoleName(
-    requireEnv("AWS_SSO_ROLE_NAME", "AWS SSO role name"),
-  );
+  const roleName = readEnv("AWS_SSO_ROLE_NAME");
+  if (roleName !== undefined) validateRoleName(roleName);
 
   const region = readEnv("AWS_REGION") ?? DEFAULT_REGION;
   const endpoint = validateEndpoint(

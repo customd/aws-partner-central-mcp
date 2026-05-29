@@ -98,11 +98,11 @@ This is the fastest path. Anyone with the `.mcpb` file can install it; there is
 no Anthropic review.
 
 1. Create (or use) a **public GitHub repository**: https://github.com/customd/aws-partner-central-mcp
-2. Cut a **GitHub Release** and **attach `dist/aws-partner-central.mcpb`** as a release asset. Tag the release to match the manifest `version` (currently `1.0.2`).
+2. Cut a **GitHub Release** and **attach `dist/aws-partner-central.mcpb`** as a release asset. Tag the release to match the manifest `version` (currently `1.0.3`).
 3. End users install by:
    - **Claude Desktop → Settings → Extensions**, then
    - **drag-and-drop the `.mcpb`** into the Extensions panel (or **double-click** the file), then
-   - fill in the **configuration dialog**: AWS SSO start URL, 12-digit account ID, SSO role name, and optional default catalog (`AWS`/`Sandbox`), then click **Install**. (Region is fixed to `us-east-1`; verbose logging is the `LOG_LEVEL` env var, not a form field.)
+   - fill in the **configuration dialog**: **AWS SSO start URL** is the only required field; account ID and role name auto-detect after sign-in (a dropdown appears if several exist), and default catalog (`AWS`/`Sandbox`) is optional — then click **Install**. (Region is fixed to `us-east-1`; verbose logging is the `LOG_LEVEL` env var, not a form field.)
 
 ### Enterprise rollout (optional)
 
@@ -220,5 +220,5 @@ Copy this into your release issue/PR and tick every box before submitting:
 ## Versioning reminder
 
 Keep `version` in **`manifest.json`** and **`package.json`** in lockstep, and tag
-each GitHub Release to match (currently `1.0.2`). Claude Desktop uses the manifest
+each GitHub Release to match (currently `1.0.3`). Claude Desktop uses the manifest
 version to detect and offer updates to installed extensions.

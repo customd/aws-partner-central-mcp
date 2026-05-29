@@ -7,8 +7,10 @@ export interface AwsCredentials {
 
 export interface SsoConfig {
   startUrl: string;
-  accountId: string;
-  roleName: string;
+  /** Optional — auto-discovered from the SSO session when omitted. */
+  accountId?: string;
+  /** Optional — auto-discovered from the SSO session when omitted. */
+  roleName?: string;
   region: string;
 }
 

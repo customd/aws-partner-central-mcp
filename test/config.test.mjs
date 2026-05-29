@@ -131,5 +131,16 @@ test("loads with only the 3 required fields (trimmed install form)", () => {
   assert.match(cfg.endpoint, /partnercentral-agents-mcp\.us-east-1\.api\.aws/);
 });
 
+test("loads with only the SSO start URL (account/role auto-detected later)", () => {
+  const cfg = withEnv(
+    { AWS_SSO_START_URL: "https://acme.awsapps.com/start" },
+    () => loadConfig(),
+  );
+  assert.equal(cfg.sso.accountId, undefined);
+  assert.equal(cfg.sso.roleName, undefined);
+  assert.equal(cfg.region, "us-east-1");
+  assert.equal(cfg.defaultCatalog, "AWS");
+});
+
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail === 0 ? 0 : 1);

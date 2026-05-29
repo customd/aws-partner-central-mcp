@@ -62,20 +62,25 @@ not aggregate, mine, profile, or resell any of it.
 
 ## 3. What is stored locally (and where)
 
-The Extension writes **exactly one** category of data to disk:
+The Extension writes **two** small files to disk, both owner-only (`0600`):
 
 | Item | Location | Permissions | Lifetime |
 |---|---|---|---|
-| AWS SSO access token cache | `~/.aws/sso/cache/<sha1(startUrl)>.json` | `0600` (owner read/write only) | ~8 hours (AWS-issued token TTL) |
+| AWS SSO access token cache | `~/.aws/sso/cache/<sha1(startUrl)>.json` | `0600` | ~8 hours (AWS-issued token TTL) |
+| Account/role selection (which AWS account + role to use) | `~/.aws-partner-central/selection-<sha1(startUrl)>.json` | `0600` | Until you change it or delete the file |
 
-This is the **same location and file format used by the AWS CLI**. If you have
-already run `aws sso login` for the same start URL, the Extension reuses that
-cached session, and vice versa. The cache contains the SSO **access token** used
-to request role credentials; it does **not** contain long-lived AWS access keys.
+The token cache is the **same location and file format used by the AWS CLI**. If
+you have already run `aws sso login` for the same start URL, the Extension reuses
+that cached session, and vice versa. The cache contains the SSO **access token**
+used to request role credentials; it does **not** contain long-lived AWS access keys.
 
-Nothing else is persisted to disk by the Extension — no configuration files, no
-conversation history, no business data, no logs (logs go to stderr; see
-Section 7).
+The selection file remembers which account/role you chose (or that was
+auto-detected) so you aren't asked again. It contains **only those two
+non-secret identifiers** — no credentials.
+
+Nothing else is persisted to disk by the Extension — no configuration beyond the
+above, no conversation history, no business data, no logs (logs go to stderr;
+see Section 7).
 
 ---
 
@@ -92,7 +97,7 @@ Section 7).
 
 The Extension communicates with **AWS endpoints only**:
 
-1. **AWS IAM Identity Center / OIDC endpoints** — for the device authorization sign-in flow and to obtain role credentials.
+1. **AWS IAM Identity Center / OIDC endpoints** — for the device authorization sign-in flow, to list the accounts/roles you can access (`sso:ListAccounts` / `sso:ListAccountRoles`, used to auto-detect your Partner Central account/role), and to obtain temporary role credentials.
 2. **AWS Partner Central agents MCP endpoint** — `https://partnercentral-agents-mcp.us-east-1.api.aws/mcp` — for your messages and the agent's responses.
 3. **AWS S3** — only when you attach a local file (see Section 6).
 
