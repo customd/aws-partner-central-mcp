@@ -64,9 +64,15 @@ function describePartnerCentralError(err: PartnerCentralError): string {
       break;
     case ERROR_CODE.INVALID_PARAMS:
     case ERROR_CODE.INVALID_REQUEST:
-      parts.push(
-        "(InvalidRequest — a common cause is reusing a session_id across catalogs. Sessions are catalog-scoped: drop session_id or switch catalog.)",
-      );
+      if (/tool use id|pending tool request/i.test(err.message)) {
+        parts.push(
+          "(Stale approval — the pending action changed since its tool_use_id was read (e.g. the agent re-proposed it). Call partner_central_get_session to read the CURRENT approval_requests[].tool_use_id, reconfirm the proposal with the user, then retry partner_central_respond_to_approval with that id.)",
+        );
+      } else {
+        parts.push(
+          "(InvalidRequest — a common cause is reusing a session_id across catalogs. Sessions are catalog-scoped: drop session_id or switch catalog.)",
+        );
+      }
       break;
     default:
       if (err.httpStatus === 403) {
@@ -250,7 +256,7 @@ Use this for an explicit, structured decision. (You can also approve/reject conv
 
 Args:
   - session_id (string, required): The session that returned 'requires_approval'.
-  - tool_use_id (string, required): The pending action's tool_use_id. It is usually NOT in the send_message response (it arrives via streaming) — call partner_central_get_session(session_id) and read approval_requests[].tool_use_id to obtain it.
+  - tool_use_id (string, required): The pending action's tool_use_id. It is usually NOT in the send_message response (it arrives via streaming) — call partner_central_get_session(session_id) and read approval_requests[].tool_use_id to obtain it. Fetch it immediately before approving; the id changes if the agent re-proposes, so if you get a "does not match pending tool request" error, re-fetch via get_session and retry.
   - decision ('approve' | 'reject' | 'override', required): 'approve' executes as proposed; 'reject' cancels (use message to explain); 'override' executes with the modified instructions in message.
   - message (string, optional): Required for 'override', recommended for 'reject'.
   - catalog ('AWS' | 'Sandbox', optional), response_format ('markdown' | 'json', optional).
