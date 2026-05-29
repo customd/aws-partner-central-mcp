@@ -1,0 +1,15 @@
+node_modules/
+.claude/settings.local.json
+server/*.js
+server/*.d.ts
+server/*.js.map
+server/services/
+server/tools/
+server/schemas/
+dist/
+*.mcpb
+.DS_Store
+*.log
+.env
+.env.*
+!.env.example

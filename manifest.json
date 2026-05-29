@@ -1,0 +1,119 @@
+{
+  "manifest_version": "0.3",
+  "name": "aws-partner-central",
+  "display_name": "AWS Partner Central",
+  "version": "1.0.0",
+  "description": "Talk to the AWS Partner Central 3.0 agent from Claude. Handles AWS IAM Identity Center sign-in and SigV4 signing for you.",
+  "long_description": "This extension connects Claude Desktop to the AWS Partner Central 3.0 agent endpoint. Ask natural-language questions about your AWS partner account — opportunities, ACE deal registrations, invitations, partner programs, certifications, training — and Claude can answer using your live Partner Central data.\n\nSign-in is handled via AWS IAM Identity Center (formerly AWS SSO). The first time the extension is used in a session, your default browser opens to authorize this server. Subsequent calls reuse the cached token (valid for ~8 hours) until it expires.\n\nNo AWS CLI installation required. No long-lived access keys stored. Sessions are catalog-scoped (AWS vs Sandbox) and expire after 48 hours.",
+  "author": {
+    "name": "Josh / Custom D",
+    "url": "https://github.com/customd/aws-partner-central-mcp"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/customd/aws-partner-central-mcp.git"
+  },
+  "homepage": "https://github.com/customd/aws-partner-central-mcp#readme",
+  "documentation": "https://github.com/customd/aws-partner-central-mcp/blob/main/README.md",
+  "support": "https://github.com/customd/aws-partner-central-mcp/issues",
+  "privacy_policies": [
+    "https://github.com/customd/aws-partner-central-mcp/blob/main/PRIVACY.md"
+  ],
+  "license": "MIT",
+  "icon": "icon.png",
+  "keywords": [
+    "aws",
+    "partner-central",
+    "ace",
+    "opportunities",
+    "sso",
+    "iam-identity-center",
+    "mcp"
+  ],
+  "server": {
+    "type": "node",
+    "entry_point": "server/index.js",
+    "mcp_config": {
+      "command": "node",
+      "args": ["${__dirname}/server/index.js"],
+      "env": {
+        "AWS_SSO_START_URL": "${user_config.sso_start_url}",
+        "AWS_SSO_ACCOUNT_ID": "${user_config.sso_account_id}",
+        "AWS_SSO_ROLE_NAME": "${user_config.sso_role_name}",
+        "AWS_REGION": "${user_config.aws_region}",
+        "PARTNER_CENTRAL_DEFAULT_CATALOG": "${user_config.default_catalog}",
+        "LOG_LEVEL": "${user_config.log_level}",
+        "NODE_ENV": "production"
+      }
+    }
+  },
+  "user_config": {
+    "sso_start_url": {
+      "type": "string",
+      "title": "AWS SSO Start URL",
+      "description": "Your AWS IAM Identity Center portal URL (e.g. https://your-org.awsapps.com/start). Find this in your AWS SSO admin or the email invite from your AWS administrator.",
+      "required": true
+    },
+    "sso_account_id": {
+      "type": "string",
+      "title": "AWS Account ID",
+      "description": "The 12-digit AWS account ID that has Partner Central enrolled. From the AWS SSO portal, click the account; the ID is shown under the name.",
+      "required": true
+    },
+    "sso_role_name": {
+      "type": "string",
+      "title": "AWS SSO Role Name",
+      "description": "The permission set / role name that grants Partner Central access. AWS resellers typically provision a role named 'PartnerCentral-Executives' for this.",
+      "default": "PartnerCentral-Executives",
+      "required": true
+    },
+    "aws_region": {
+      "type": "string",
+      "title": "AWS Region",
+      "description": "AWS region for the Partner Central endpoint. Currently only 'us-east-1' is supported.",
+      "default": "us-east-1",
+      "required": true
+    },
+    "default_catalog": {
+      "type": "string",
+      "title": "Default Catalog",
+      "description": "Which Partner Central catalog to query by default. 'AWS' for production data, 'Sandbox' for testing. Tools can override this per-call.",
+      "default": "AWS",
+      "required": true
+    },
+    "log_level": {
+      "type": "string",
+      "title": "Log Level",
+      "description": "Logging verbosity — debug, info, warn, or error. Logs go to stderr (visible in Claude Desktop's developer console).",
+      "default": "info",
+      "required": false
+    }
+  },
+  "tools": [
+    {
+      "name": "partner_central_send_message",
+      "description": "Send a natural-language message — optionally with file attachments (PDF, DOCX, XLSX, CSV, images) — to the AWS Partner Central agent and return its response. Use for pipeline insights, opportunities (ACE deal registrations), funding programs, solution recommendations, customer profiles, and creating/updating opportunities or fund requests."
+    },
+    {
+      "name": "partner_central_respond_to_approval",
+      "description": "Approve, reject, or override a Partner Central write operation that is awaiting human confirmation (a send_message response with status 'requires_approval'). This is the only path through which a write actually executes."
+    },
+    {
+      "name": "partner_central_get_session",
+      "description": "Retrieve the transcript and state of a previous Partner Central conversation session by session ID."
+    },
+    {
+      "name": "partner_central_verify_connection",
+      "description": "Diagnostic tool — verifies AWS SSO credentials, SigV4 signing, and Partner Central reachability by sending a benign test message in Sandbox."
+    }
+  ],
+  "tools_generated": false,
+  "prompts_generated": false,
+  "compatibility": {
+    "claude_desktop": ">=1.0.0",
+    "platforms": ["darwin", "win32", "linux"],
+    "runtimes": {
+      "node": ">=18.0.0"
+    }
+  }
+}
