@@ -116,5 +116,20 @@ test("rejects missing required start URL", () => {
   );
 });
 
+test("loads with only the 3 required fields (trimmed install form)", () => {
+  const cfg = withEnv(
+    {
+      AWS_SSO_START_URL: "https://acme.awsapps.com/start",
+      AWS_SSO_ACCOUNT_ID: "123456789012",
+      AWS_SSO_ROLE_NAME: "SomeRole",
+    },
+    () => loadConfig(),
+  );
+  // Region and catalog are not on the form anymore — code supplies defaults.
+  assert.equal(cfg.region, "us-east-1");
+  assert.equal(cfg.defaultCatalog, "AWS");
+  assert.match(cfg.endpoint, /partnercentral-agents-mcp\.us-east-1\.api\.aws/);
+});
+
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail === 0 ? 0 : 1);

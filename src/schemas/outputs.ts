@@ -57,4 +57,14 @@ export const VerifyConnectionOutputSchema = z.object({
   agent_status: z.string().optional(),
   preview: z.string().optional(),
   error: z.string().optional(),
+  config: z
+    .object({
+      sso_start_url: z.string(),
+      account_id: z.string(),
+      role_name: z.string(),
+      region: z.string(),
+      default_catalog: z.string(),
+    })
+    .optional()
+    .describe("Effective configuration (account ID masked) so the user can confirm or correct setup."),
 });

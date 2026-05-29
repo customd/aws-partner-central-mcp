@@ -2,7 +2,7 @@
   "manifest_version": "0.3",
   "name": "aws-partner-central",
   "display_name": "AWS Partner Central",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "description": "Talk to the AWS Partner Central 3.0 agent from Claude. Handles AWS IAM Identity Center sign-in and SigV4 signing for you.",
   "long_description": "This extension connects Claude Desktop to the AWS Partner Central 3.0 agent endpoint. Ask natural-language questions about your AWS partner account — opportunities, ACE deal registrations, invitations, partner programs, certifications, training — and Claude can answer using your live Partner Central data.\n\nSign-in is handled via AWS IAM Identity Center (formerly AWS SSO). The first time the extension is used in a session, your default browser opens to authorize this server. Subsequent calls reuse the cached token (valid for ~8 hours) until it expires.\n\nNo AWS CLI installation required. No long-lived access keys stored. Sessions are catalog-scoped (AWS vs Sandbox) and expire after 48 hours.",
   "author": {
@@ -40,9 +40,7 @@
         "AWS_SSO_START_URL": "${user_config.sso_start_url}",
         "AWS_SSO_ACCOUNT_ID": "${user_config.sso_account_id}",
         "AWS_SSO_ROLE_NAME": "${user_config.sso_role_name}",
-        "AWS_REGION": "${user_config.aws_region}",
         "PARTNER_CENTRAL_DEFAULT_CATALOG": "${user_config.default_catalog}",
-        "LOG_LEVEL": "${user_config.log_level}",
         "NODE_ENV": "production"
       }
     }
@@ -51,41 +49,26 @@
     "sso_start_url": {
       "type": "string",
       "title": "AWS SSO Start URL",
-      "description": "Your AWS IAM Identity Center portal URL (e.g. https://your-org.awsapps.com/start). Find this in your AWS SSO admin or the email invite from your AWS administrator.",
+      "description": "Your AWS IAM Identity Center portal URL (e.g. https://your-org.awsapps.com/start). Find it in the email invite from your AWS administrator, or in the AWS access portal.",
       "required": true
     },
     "sso_account_id": {
       "type": "string",
       "title": "AWS Account ID",
-      "description": "The 12-digit AWS account ID that has Partner Central enrolled. From the AWS SSO portal, click the account; the ID is shown under the name.",
+      "description": "The 12-digit AWS account ID that has Partner Central enrolled. In the AWS access portal, click the account; the ID is shown under the name.",
       "required": true
     },
     "sso_role_name": {
       "type": "string",
       "title": "AWS SSO Role Name",
-      "description": "The permission set / role name that grants Partner Central access. AWS resellers typically provision a role named 'PartnerCentral-Executives' for this.",
-      "default": "PartnerCentral-Executives",
-      "required": true
-    },
-    "aws_region": {
-      "type": "string",
-      "title": "AWS Region",
-      "description": "AWS region for the Partner Central endpoint. Currently only 'us-east-1' is supported.",
-      "default": "us-east-1",
+      "description": "The permission-set / role name your AWS administrator set up for Partner Central — it appears as a 'role' under your account in the AWS access portal. The name varies by organisation (for example it might be called 'PartnerCentral-Executives', but yours may differ).",
       "required": true
     },
     "default_catalog": {
       "type": "string",
-      "title": "Default Catalog",
-      "description": "Which Partner Central catalog to query by default. 'AWS' for production data, 'Sandbox' for testing. Tools can override this per-call.",
+      "title": "Default Catalog (optional)",
+      "description": "Which Partner Central catalog to use by default: 'AWS' for your live data, or 'Sandbox' for safe testing. Defaults to 'AWS'. Individual requests can override this.",
       "default": "AWS",
-      "required": true
-    },
-    "log_level": {
-      "type": "string",
-      "title": "Log Level",
-      "description": "Logging verbosity — debug, info, warn, or error. Logs go to stderr (visible in Claude Desktop's developer console).",
-      "default": "info",
       "required": false
     }
   },
@@ -104,7 +87,7 @@
     },
     {
       "name": "partner_central_verify_connection",
-      "description": "Diagnostic tool — verifies AWS SSO credentials, SigV4 signing, and Partner Central reachability by sending a benign test message in Sandbox."
+      "description": "Setup & diagnostics — checks AWS SSO sign-in, SigV4 signing, and Partner Central reachability (benign Sandbox test), and reports the effective configuration so you can confirm or correct your setup conversationally."
     }
   ],
   "tools_generated": false,

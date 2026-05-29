@@ -24,10 +24,10 @@ A drag-and-drop Claude Desktop extension that connects Claude to the **AWS Partn
    |---|---|---|
    | **AWS SSO Start URL** | Your IAM Identity Center portal URL | `https://your-org.awsapps.com/start` |
    | **AWS Account ID** | The 12-digit account ID that has Partner Central enrolled | `123456789012` |
-   | **AWS SSO Role Name** | The permission set granting Partner Central access | `PartnerCentral-Executives` |
-   | **AWS Region** | Partner Central region (only `us-east-1` is supported today) | `us-east-1` |
-   | **Default Catalog** | `AWS` for production data, `Sandbox` for testing | `AWS` |
-   | **Log Level** | `debug`, `info`, `warn`, `error` | `info` |
+   | **AWS SSO Role Name** | The permission-set / role name from your AWS access portal (your admin set it up — the name varies by org) | e.g. `PartnerCentral-Executives` |
+   | **Default Catalog** *(optional)* | `AWS` for live data, `Sandbox` for testing (defaults to `AWS`) | `AWS` |
+
+   > Only three fields are required — Region is fixed to `us-east-1`, and verbose logging is an env var (`LOG_LEVEL`) rather than a form field. After installing, ask Claude to **"verify my Partner Central connection"**: it confirms sign-in and echoes your settings back so you can check them.
 
 6. Click **Install**.
 
@@ -183,7 +183,7 @@ Sessions are scoped per catalog. A session created in Sandbox cannot be reused i
 Confirm the file is an allowed type within the size limits, and that your AWS role can write to the ephemeral document bucket (`s3:PutObject`).
 
 ### Logs
-The extension logs JSON lines to stderr. View them in Claude Desktop's developer console (Cmd+Shift+I → Console). Set **Log Level** to `debug` in the extension config for verbose logs. Credentials and tokens are never logged.
+The extension logs JSON lines to stderr. View them in Claude Desktop's developer console (Cmd+Shift+I → Console). For verbose logs, set the `LOG_LEVEL` environment variable to `debug` (advanced/support use). Credentials and tokens are never logged.
 
 ---
 

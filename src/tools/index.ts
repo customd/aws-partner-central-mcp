@@ -277,20 +277,20 @@ Errors: ResourceNotFound/-30001 (session expired >48h or wrong catalog); HTTP 40
   server.registerTool(
     "partner_central_verify_connection",
     {
-      title: "Verify AWS Partner Central Connection",
-      description: `Diagnostic tool that verifies AWS SSO credentials, SigV4 signing, and Partner Central reachability by sending a benign test message.
+      title: "Verify AWS Partner Central Setup & Connection",
+      description: `Setup & diagnostics: verifies AWS SSO sign-in, SigV4 signing, and Partner Central reachability with a benign Sandbox test, and reports the effective configuration (account ID masked) so you can confirm or correct the user's setup conversationally.
 
 Run this when:
-  - The user is setting up the extension for the first time
-  - send_message is returning auth errors and you want to isolate the failure
-  - The user asks "is Partner Central working?" or similar
+  - The user is setting up the extension for the first time — show them the returned 'config' and confirm each value looks right (especially the role name and account ID, which they enter manually).
+  - send_message is returning auth errors and you want to isolate the failure.
+  - The user asks "is Partner Central working?" or "did I set this up right?"
 
-This always runs against the 'Sandbox' catalog for safety (overriding any configured default) so it can never surface or mutate production data. Note: it creates a short throwaway Sandbox session.
+On failure, explain what to fix and where: the SSO start URL, account ID, and role name come from the user's AWS access portal, and are edited in Claude Desktop → Settings → Extensions → AWS Partner Central. This always runs against the 'Sandbox' catalog for safety. Note: it creates a short throwaway Sandbox session.
 
 Args:
   - catalog ('AWS' | 'Sandbox', optional): Override the catalog to verify against. Defaults to 'Sandbox'.
 
-Returns structured content: { ok, catalog, session_id?, agent_status?, preview?, error? }.`,
+Returns structured content: { ok, catalog, config: { sso_start_url, account_id (masked), role_name, region, default_catalog }, session_id?, agent_status?, preview?, error? }.`,
       inputSchema: VerifyConnectionInputSchema.shape,
       outputSchema: VerifyConnectionOutputSchema.shape,
       annotations: {
@@ -302,6 +302,22 @@ Returns structured content: { ok, catalog, session_id?, agent_status?, preview?,
     },
     async (params: VerifyConnectionInput) => {
       const catalog = params.catalog ?? CATALOG_SANDBOX;
+      const configSummary = {
+        sso_start_url: config.sso.startUrl,
+        account_id: config.sso.accountId.replace(/\d(?=\d{4})/g, "*"),
+        role_name: config.sso.roleName,
+        region: config.region,
+        default_catalog: config.defaultCatalog,
+      };
+      const setupLines = [
+        "",
+        "Configured setup:",
+        `- SSO start URL: ${configSummary.sso_start_url}`,
+        `- Account ID: ${configSummary.account_id}`,
+        `- Role name: ${configSummary.role_name}`,
+        `- Region: ${configSummary.region}`,
+        `- Default catalog: ${configSummary.default_catalog}`,
+      ];
       try {
         const raw = await client.callTool("sendMessage", {
           content: [
@@ -316,16 +332,18 @@ Returns structured content: { ok, catalog, session_id?, agent_status?, preview?,
         const structured = {
           ok: true,
           catalog,
+          config: configSummary,
           session_id: parsed.sessionId,
           agent_status: parsed.status,
           preview: parsed.text.slice(0, 500),
         };
         const text = [
-          "Partner Central connection verified.",
+          "✅ Partner Central connection verified.",
           `- Catalog: ${catalog}`,
           structured.session_id ? `- Session: ${structured.session_id}` : null,
           structured.agent_status ? `- Status: ${structured.agent_status}` : null,
           parsed.text ? `- Agent reply: ${parsed.text.slice(0, 200)}` : null,
+          ...setupLines,
         ]
           .filter((line): line is string => line !== null)
           .join("\n");
@@ -338,13 +356,19 @@ Returns structured content: { ok, catalog, session_id?, agent_status?, preview?,
         const structured = {
           ok: false,
           catalog,
+          config: configSummary,
           error: message,
         };
+        const text = [
+          "❌ Partner Central connection failed.",
+          message,
+          ...setupLines,
+          "",
+          "If a value above looks wrong, edit it in Claude Desktop → Settings → Extensions → AWS Partner Central. The SSO start URL, account ID, and role name all come from your AWS access portal.",
+        ].join("\n");
         return {
           isError: true,
-          content: [
-            { type: "text" as const, text: `Partner Central connection failed.\n${message}` },
-          ],
+          content: [{ type: "text" as const, text }],
           structuredContent: structured,
         };
       }

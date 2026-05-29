@@ -1,6 +1,6 @@
 # Sandbox Acceptance Test
 
-Run this after installing **`aws-partner-central.mcpb` (v1.0.1)** in Claude Desktop with
+Run this after installing **`aws-partner-central.mcpb` (v1.0.2)** in Claude Desktop with
 **Default Catalog = `Sandbox`**. Each step is a prompt you give Claude; the *expected result*
 confirms a capability. The `Sandbox` catalog is isolated from production partner data, so
 writes here are safe.
@@ -10,7 +10,7 @@ writes here are safe.
 > real AWS Partner Central session.
 
 ## 0. Setup
-- [ ] Install the `.mcpb`, set **Default Catalog = Sandbox**, Log Level `info`.
+- [ ] Install the `.mcpb`, set **Default Catalog = Sandbox**.
 - [ ] First tool call opens your browser for AWS IAM Identity Center → **Allow access**.
 
 ## 1. Connection (auth + SigV4 + endpoint)
@@ -46,7 +46,7 @@ writes here are safe.
 
 ---
 
-## Live results — 2026-05-29 (Sandbox, v1.0.1 build)
+## Live results — 2026-05-29 (Sandbox, v1.0.2 build)
 Driven end-to-end against the live endpoint:
 - ✅ **Connection / auth / SigV4 / endpoint** — `verify_connection` OK.
 - ✅ **Read** — agent answered a capability query.
