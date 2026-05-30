@@ -107,6 +107,6 @@ build before running (npm test's `pretest` does this). Keep that style; inject m
 
 ## State (update as you go)
 
-- Latest release: **v1.0.3**. `main` may be ahead with unreleased fixes.
+- Latest release: **v1.0.4** (adds clearer stale-`tool_use_id` approval error). `main` in sync at tag `v1.0.4`.
 - Known follow-ups: verify the prod test opportunity **O21117997** was actually closed; Windows install smoke
   test (only macOS verified); directory submission pending the user.
