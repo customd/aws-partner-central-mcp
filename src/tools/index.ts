@@ -35,8 +35,14 @@ import { formatAgentResponse } from "./format.js";
 import type { ContentBlock, PartnerCentralConfig } from "../types.js";
 import { CATALOG_SANDBOX, ERROR_CODE } from "../constants.js";
 
-function maskAccountId(id: string): string {
-  return id.replace(/\d(?=\d{4})/g, "*");
+/**
+ * Mask all but the last 4 digits of an AWS account ID for display/logging
+ * (e.g. "123456789012" → "********9012"). Returns "(auto-detect on sign-in)"
+ * when the id is not yet known — the single source of truth for this format,
+ * shared by the tools, verify_connection, and the startup log.
+ */
+export function maskAccountId(id?: string): string {
+  return id ? id.replace(/\d(?=\d{4})/g, "*") : "(auto-detect on sign-in)";
 }
 
 function describePartnerCentralError(err: PartnerCentralError): string {
@@ -179,6 +185,46 @@ function makeAccountRoleElicitor(server: McpServer): ElicitAccountRole {
       return null;
     }
   };
+}
+
+/**
+ * Core of partner_central_select_account, factored out for testability: enumerate
+ * the account/role options, validate the requested pair against them, and either
+ * reject (listing the valid options) or pin + persist the selection. The registered
+ * tool callback is a thin wrapper around this.
+ */
+export async function runSelectAccount(
+  client: Pick<PartnerCentralClient, "listAvailableAccountRoles" | "setSelectedIdentity">,
+  params: SelectAccountInput,
+): Promise<ReturnType<typeof errorResult> | ReturnType<typeof successResult>> {
+  try {
+    const options = await client.listAvailableAccountRoles();
+    const match = findOption(options, {
+      accountId: params.account_id,
+      roleName: params.role_name,
+    });
+    if (!match) {
+      const lines = [
+        "That account/role isn't one you can access. Choose from:",
+        ...options.map(
+          (o: AccountRoleOption, i: number) =>
+            `  ${i + 1}. ${o.label}   (account_id ${o.accountId}, role_name ${o.roleName})`,
+        ),
+      ];
+      return errorResult(lines.join("\n"));
+    }
+    await client.setSelectedIdentity({
+      accountId: match.accountId,
+      roleName: match.roleName,
+    });
+    const masked = maskAccountId(match.accountId);
+    return successResult(
+      `✅ Using AWS account ${masked} with role ${match.roleName}. I'll remember this for future requests — call partner_central_select_account anytime to switch.`,
+      { ok: true, account_id: masked, role_name: match.roleName },
+    );
+  } catch (err) {
+    return handleError(err);
+  }
 }
 
 export function registerTools(
@@ -380,8 +426,6 @@ Returns structured content: { ok, catalog, config: { sso_start_url, account_id (
     },
     async (params: VerifyConnectionInput) => {
       const catalog = params.catalog ?? CATALOG_SANDBOX;
-      const maskId = (id?: string): string =>
-        id ? id.replace(/\d(?=\d{4})/g, "*") : "(auto-detect on sign-in)";
       // Built after the call so it reflects the resolved/auto-detected identity.
       const buildSetup = (): {
         summary: Record<string, string>;
@@ -393,7 +437,7 @@ Returns structured content: { ok, catalog, config: { sso_start_url, account_id (
         const tag = resolved ? " (auto-detected)" : "";
         const summary = {
           sso_start_url: config.sso.startUrl,
-          account_id: maskId(accountId),
+          account_id: maskAccountId(accountId),
           role_name: roleName ?? "(auto-detect on sign-in)",
           region: config.region,
           default_catalog: config.defaultCatalog,
@@ -482,7 +526,7 @@ Returns structured content: { ok, catalog, config: { sso_start_url, account_id (
       title: "Select AWS Account & Role for Partner Central",
       description: `Pin which AWS account + permission-set role this extension uses — and switch it later.
 
-Use this when another tool reports that multiple AWS accounts/roles are available and asks the user to choose, or whenever the user wants to switch account/role. Present the options to the user, confirm their choice, then call this with that account_id + role_name. The choice is remembered for future calls. (You may also call it with a best-guess pair to get the list of valid options back in the error.)
+Use this when another tool reports that multiple AWS accounts/roles are available and asks the user to choose, or whenever the user wants to switch account/role. Present the options to the user, confirm their choice, then call this with that account_id + role_name. The choice is remembered for future calls. If you don't already have the list of options, the selection error from the other tools includes it.
 
 Args:
   - account_id (string, required): the 12-digit AWS account ID, chosen from the listed options.
@@ -498,35 +542,6 @@ Returns { ok, account_id (masked), role_name }. If the pair isn't one the user c
         openWorldHint: true,
       },
     },
-    async (params: SelectAccountInput) => {
-      try {
-        const options = await client.listAvailableAccountRoles();
-        const match = findOption(options, {
-          accountId: params.account_id,
-          roleName: params.role_name,
-        });
-        if (!match) {
-          const lines = [
-            "That account/role isn't one you can access. Choose from:",
-            ...options.map(
-              (o: AccountRoleOption, i: number) =>
-                `  ${i + 1}. ${o.label}   (account_id ${o.accountId}, role_name ${o.roleName})`,
-            ),
-          ];
-          return errorResult(lines.join("\n"));
-        }
-        await client.setSelectedIdentity({
-          accountId: match.accountId,
-          roleName: match.roleName,
-        });
-        const masked = maskAccountId(match.accountId);
-        return successResult(
-          `✅ Using AWS account ${masked} with role ${match.roleName}. I'll remember this for future requests — call partner_central_select_account anytime to switch.`,
-          { ok: true, account_id: masked, role_name: match.roleName },
-        );
-      } catch (err) {
-        return handleError(err);
-      }
-    },
+    async (params: SelectAccountInput) => runSelectAccount(client, params),
   );
 }

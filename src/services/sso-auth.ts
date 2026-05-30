@@ -401,6 +401,7 @@ export class SsoCredentialResolver {
         listAccounts: () => listAccounts(sso, token),
         listAccountRoles: (accountId) => listAccountRoles(sso, token, accountId),
         configAccountId: this.config.accountId,
+        configRoleName: this.config.roleName,
       });
     } finally {
       sso.destroy();

@@ -5,7 +5,7 @@ import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js"
 import { SERVER_NAME, SERVER_VERSION } from "./constants.js";
 import { ConfigError, loadConfig } from "./config.js";
 import { logger } from "./logger.js";
-import { registerTools } from "./tools/index.js";
+import { maskAccountId, registerTools } from "./tools/index.js";
 
 async function main(): Promise<void> {
   let config;
@@ -21,9 +21,7 @@ async function main(): Promise<void> {
 
   // Mask the account ID — only the last 4 digits are logged for support
   // correlation; the full ID is not written to stderr. May be auto-detected.
-  const maskedAccountId = config.sso.accountId
-    ? config.sso.accountId.replace(/\d(?=\d{4})/g, "*")
-    : "(auto-detect)";
+  const maskedAccountId = maskAccountId(config.sso.accountId);
   logger.info("Starting aws-partner-central-mcp-server", {
     version: SERVER_VERSION,
     region: config.region,

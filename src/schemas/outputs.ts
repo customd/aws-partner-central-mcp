@@ -73,5 +73,4 @@ export const SelectAccountOutputSchema = z.object({
   ok: z.boolean(),
   account_id: z.string().describe("The selected AWS account ID (masked)."),
   role_name: z.string().describe("The selected permission-set / role name."),
-  error: z.string().optional(),
 });
