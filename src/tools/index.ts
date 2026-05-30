@@ -33,7 +33,7 @@ import {
 } from "../schemas/outputs.js";
 import { formatAgentResponse } from "./format.js";
 import type { ContentBlock, PartnerCentralConfig } from "../types.js";
-import { CATALOG_SANDBOX, ERROR_CODE } from "../constants.js";
+import { ERROR_CODE } from "../constants.js";
 
 /**
  * Mask all but the last 4 digits of an AWS account ID for display/logging
@@ -402,19 +402,19 @@ Errors: ResourceNotFound/-30001 (session expired >48h or wrong catalog); HTTP 40
     "partner_central_verify_connection",
     {
       title: "Verify AWS Partner Central Setup & Connection",
-      description: `Setup & diagnostics: verifies AWS SSO sign-in, SigV4 signing, and Partner Central reachability with a benign Sandbox test, and reports the effective configuration (account ID masked) so you can confirm or correct the user's setup conversationally.
+      description: `Setup & diagnostics: verifies AWS SSO sign-in, SigV4 signing, and Partner Central reachability with a read-only probe (a lookup of a non-existent session, which creates nothing), and reports the effective configuration (account ID masked) so you can confirm or correct the user's setup conversationally.
 
 Run this when:
   - The user is setting up the extension for the first time — show them the returned 'config' and confirm each value looks right (especially the role name and account ID, which they enter manually).
   - send_message is returning auth errors and you want to isolate the failure.
   - The user asks "is Partner Central working?" or "did I set this up right?"
 
-On failure, explain what to fix and where: the SSO start URL, account ID, and role name come from the user's AWS access portal, and are edited in Claude Desktop → Settings → Extensions → AWS Partner Central. This always runs against the 'Sandbox' catalog for safety. Note: it creates a short throwaway Sandbox session.
+On failure, explain what to fix and where: the SSO start URL, account ID, and role name come from the user's AWS access portal, and are edited in Claude Desktop → Settings → Extensions → AWS Partner Central. This runs a read-only reachability probe against your default catalog (override with 'catalog'); it creates nothing in any catalog.
 
 Args:
-  - catalog ('AWS' | 'Sandbox', optional): Override the catalog to verify against. Defaults to 'Sandbox'.
+  - catalog ('AWS' | 'Sandbox', optional): Override the catalog to verify against. Defaults to your configured default catalog.
 
-Returns structured content: { ok, catalog, config: { sso_start_url, account_id (masked), role_name, region, default_catalog }, session_id?, agent_status?, preview?, error? }.`,
+Returns structured content: { ok, catalog, config: { sso_start_url, account_id (masked), role_name, region, default_catalog }, error? }.`,
       inputSchema: VerifyConnectionInputSchema.shape,
       outputSchema: VerifyConnectionOutputSchema.shape,
       annotations: {
@@ -425,7 +425,10 @@ Returns structured content: { ok, catalog, config: { sso_start_url, account_id (
       },
     },
     async (params: VerifyConnectionInput) => {
-      const catalog = params.catalog ?? CATALOG_SANDBOX;
+      const catalog = params.catalog ?? config.defaultCatalog;
+      // A session id that cannot exist; the probe below is a read-only lookup, so a
+      // "not found" reply proves SSO + SigV4 + reachability without creating anything.
+      const PROBE_SESSION_ID = "session-00000000-0000-0000-0000-000000000000";
       // Built after the call so it reflects the resolved/auto-detected identity.
       const buildSetup = (): {
         summary: Record<string, string>;
@@ -453,38 +456,44 @@ Returns structured content: { ok, catalog, config: { sso_start_url, account_id (
         ];
         return { summary, lines };
       };
-      try {
-        const raw = await client.callTool("sendMessage", {
-          content: [
-            {
-              type: "text",
-              text: "Reply with exactly: 'Partner Central MCP connection OK.'",
-            },
-          ],
-          catalog,
-        });
-        const parsed = parseAgentResponse(raw);
+      const verified = (): ReturnType<typeof successResult> => {
         const { summary, lines } = buildSetup();
-        const structured = {
-          ok: true,
-          catalog,
-          config: summary,
-          session_id: parsed.sessionId,
-          agent_status: parsed.status,
-          preview: parsed.text.slice(0, 500),
-        };
         const text = [
           "✅ Partner Central connection verified.",
-          `- Catalog: ${catalog}`,
-          structured.session_id ? `- Session: ${structured.session_id}` : null,
-          structured.agent_status ? `- Status: ${structured.agent_status}` : null,
-          parsed.text ? `- Agent reply: ${parsed.text.slice(0, 200)}` : null,
+          `- Catalog tested: ${catalog}`,
+          "- SSO sign-in, SigV4 signing, and Partner Central reachability: all OK.",
+          "- (Read-only reachability probe — no session or data was created.)",
           ...lines,
-        ]
-          .filter((line): line is string => line !== null)
-          .join("\n");
-        return successResult(text, structured);
+        ].join("\n");
+        return successResult(text, { ok: true, catalog, config: summary });
+      };
+
+      try {
+        // Read-only reachability probe: look up a session that cannot exist. A
+        // processed "not found" reply (HTTP 200 business error) proves SSO +
+        // SigV4 + endpoint reachability succeeded — without creating anything.
+        await client.callTool("getSession", {
+          sessionId: PROBE_SESSION_ID,
+          catalog,
+        });
+        // The probe id resolved to a real session (astronomically unlikely) — still healthy.
+        return verified();
       } catch (err) {
+        // A processed business-error reply (e.g. "session not found") still proves
+        // SSO + signing + reachability worked; only network, auth, or access
+        // failures mean the connection/setup is actually broken.
+        if (
+          err instanceof PartnerCentralError &&
+          !err.isNetworkError &&
+          err.code !== ERROR_CODE.AUTHENTICATION_FAILURE &&
+          err.code !== ERROR_CODE.ACCESS_DENIED &&
+          err.code !== ERROR_CODE.TOOL_PERMISSION_DENIED &&
+          err.httpStatus !== 401 &&
+          err.httpStatus !== 403
+        ) {
+          return verified();
+        }
+
         let message: string;
         if (err instanceof NeedsSelectionError) {
           message =
