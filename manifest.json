@@ -2,7 +2,7 @@
   "manifest_version": "0.3",
   "name": "aws-partner-central",
   "display_name": "AWS Partner Central",
-  "version": "1.0.5",
+  "version": "1.0.6",
   "description": "Talk to the AWS Partner Central 3.0 agent from Claude. Handles AWS IAM Identity Center sign-in and SigV4 signing for you.",
   "long_description": "This extension connects Claude Desktop to the AWS Partner Central 3.0 agent endpoint. Ask natural-language questions about your AWS partner account — opportunities, ACE deal registrations, invitations, partner programs, certifications, training — and Claude can answer using your live Partner Central data.\n\nSign-in is handled via AWS IAM Identity Center (formerly AWS SSO). The first time the extension is used in a session, your default browser opens to authorize this server. Subsequent calls reuse the cached token (valid for ~8 hours) until it expires.\n\nNo AWS CLI installation required. No long-lived access keys stored. Sessions are catalog-scoped (AWS vs Sandbox) and expire after 48 hours.",
   "author": {
@@ -88,6 +88,10 @@
     {
       "name": "partner_central_verify_connection",
       "description": "Setup & diagnostics — checks AWS SSO sign-in, SigV4 signing, and Partner Central reachability (benign Sandbox test), and reports the effective configuration so you can confirm or correct your setup conversationally."
+    },
+    {
+      "name": "partner_central_select_account",
+      "description": "Pin which AWS account + permission-set role the extension uses, and switch it later. Use when multiple accounts/roles are available and the user must choose, or to switch accounts."
     }
   ],
   "tools_generated": false,
