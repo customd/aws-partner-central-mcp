@@ -80,6 +80,15 @@ build before running (npm test's `pretest` does this). Keep that style; inject m
    but **not `elicitation`**, so the dropdown **falls back to text there**; it renders in Claude Code. Always
    capability-detect (`server.server.getClientCapabilities()?.elicitation`) with a text fallback.
 6. **Endpoint is `us-east-1` only**; `config.ts` SSRF-guards `PARTNER_CENTRAL_ENDPOINT` to `https://*.api.aws`.
+7. **Blank optional config → literal `${...}` placeholders (startup crash that masquerades as a connection error).**
+   Claude Desktop substitutes the LITERAL string `${user_config.sso_account_id}` / `${user_config.sso_role_name}`
+   into the env when an **optional** `user_config` field is left blank — it does **not** pass empty or omit the var.
+   `config.ts#readEnv` must treat an unsubstituted `^${...}$` as **unset**; otherwise `validateAccountId` rejects the
+   placeholder → `ConfigError` → `process.exit(2)` **during config load, before the MCP handshake** → Desktop reports
+   **"Could not attach / Server disconnected."** This looks like connection churn but is a startup crash; the server's
+   stderr doesn't reach Desktop's per-server log (crash precedes transport connect), so diagnose by running the bundle
+   directly with that env. Regressed in **v1.0.3** (account/role became optional), fixed in **v1.0.5**. Pinned by
+   `test/config.test.mjs` → "treats unsubstituted ${...} placeholders".
 
 ## Live testing & safety
 
@@ -107,6 +116,6 @@ build before running (npm test's `pretest` does this). Keep that style; inject m
 
 ## State (update as you go)
 
-- Latest release: **v1.0.4** (adds clearer stale-`tool_use_id` approval error). `main` in sync at tag `v1.0.4`.
+- Latest release: **v1.0.5** (fixes blank-optional-field `${...}` placeholder crash → "Could not attach"; see gotcha #7). `main` in sync at tag `v1.0.5`.
 - Known follow-ups: verify the prod test opportunity **O21117997** was actually closed; Windows install smoke
   test (only macOS verified); directory submission pending the user.
