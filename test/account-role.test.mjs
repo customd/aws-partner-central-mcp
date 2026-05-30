@@ -6,6 +6,8 @@
 import assert from "node:assert/strict";
 import {
   resolveAccountRole,
+  buildAccountRoleOptions,
+  findOption,
   NeedsSelectionError,
   NoAccessError,
 } from "../server/services/account-role.js";
@@ -159,6 +161,45 @@ await test("config account hint limits role lookup to that account", async () =>
   assert.equal(sel.accountId, "999999999999");
   assert.equal(sel.roleName, "TheRole");
   assert.deepEqual(queried, ["999999999999"]);
+});
+
+// ---------------------------------------------------------------------------
+// buildAccountRoleOptions + findOption — option-building/lookup for selection.
+// ---------------------------------------------------------------------------
+const optionDeps = {
+  listAccounts: async () => [
+    { accountId: "111111111111", accountName: "Acme" },
+    { accountId: "222222222222", accountName: "Beta" },
+  ],
+  listAccountRoles: async (id) => (id === "111111111111" ? ["RoleA", "RoleB"] : ["RoleC"]),
+};
+
+await test("buildAccountRoleOptions expands every account x role", async () => {
+  const opts = await buildAccountRoleOptions(optionDeps);
+  assert.equal(opts.length, 3);
+  assert.deepEqual(opts.map((o) => `${o.accountId}/${o.roleName}`).sort(), [
+    "111111111111/RoleA",
+    "111111111111/RoleB",
+    "222222222222/RoleC",
+  ]);
+  assert.match(opts[0].label, /Acme \(111111111111\) · RoleA/);
+});
+
+await test("configAccountId narrows to one account", async () => {
+  const opts = await buildAccountRoleOptions({ ...optionDeps, configAccountId: "222222222222" });
+  assert.deepEqual(opts.map((o) => o.roleName), ["RoleC"]);
+});
+
+await test("configRoleName filters roles", async () => {
+  const opts = await buildAccountRoleOptions({ ...optionDeps, configRoleName: "RoleB" });
+  assert.deepEqual(opts.map((o) => `${o.accountId}/${o.roleName}`), ["111111111111/RoleB"]);
+});
+
+await test("findOption matches an exact pair, else undefined", async () => {
+  const opts = await buildAccountRoleOptions(optionDeps);
+  assert.ok(findOption(opts, { accountId: "111111111111", roleName: "RoleB" }));
+  assert.equal(findOption(opts, { accountId: "111111111111", roleName: "Nope" }), undefined);
+  assert.equal(findOption(opts, { accountId: "999999999999", roleName: "RoleA" }), undefined);
 });
 
 console.log(`\n${pass} passed, ${fail} failed`);
