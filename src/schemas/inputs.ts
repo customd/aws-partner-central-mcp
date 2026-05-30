@@ -122,3 +122,21 @@ export const VerifyConnectionInputSchema = z
   .strict();
 
 export type VerifyConnectionInput = z.infer<typeof VerifyConnectionInputSchema>;
+
+export const SelectAccountInputSchema = z
+  .object({
+    account_id: z
+      .string()
+      .regex(/^\d{12}$/, "account_id must be a 12-digit AWS account ID")
+      .describe("The 12-digit AWS account ID to use, chosen from the options the extension listed."),
+    role_name: z
+      .string()
+      .min(1, "role_name is required")
+      .max(64, "role_name is too long")
+      .describe(
+        "The permission-set / role name to use in that account (e.g. 'PartnerCentral-Executives').",
+      ),
+  })
+  .strict();
+
+export type SelectAccountInput = z.infer<typeof SelectAccountInputSchema>;
