@@ -18,7 +18,14 @@ function readEnv(name: string): string | undefined {
   const v = process.env[name];
   if (v === undefined) return undefined;
   const trimmed = v.trim();
-  return trimmed.length === 0 ? undefined : trimmed;
+  if (trimmed.length === 0) return undefined;
+  // Claude Desktop substitutes the LITERAL "${user_config.x}" string when an
+  // OPTIONAL user_config field is left blank (it neither passes empty nor omits
+  // the var). Treat an unsubstituted placeholder as unset — otherwise a blank
+  // optional field (e.g. account ID / role) fails validation and the server
+  // exits at startup, which Desktop surfaces as "Could not attach".
+  if (/^\$\{[^}]*\}$/.test(trimmed)) return undefined;
+  return trimmed;
 }
 
 function requireEnv(name: string, friendly: string): string {

@@ -142,5 +142,24 @@ test("loads with only the SSO start URL (account/role auto-detected later)", () 
   assert.equal(cfg.defaultCatalog, "AWS");
 });
 
+test("treats unsubstituted ${...} placeholders as unset (Claude Desktop blank optional fields)", () => {
+  // Claude Desktop substitutes the literal "${user_config.x}" string for a
+  // BLANK optional user_config field (it does not pass empty or omit the var).
+  // The server must treat these as unset, not validate them as real values —
+  // otherwise it exits at startup and Desktop reports "Could not attach".
+  const cfg = withEnv(
+    {
+      AWS_SSO_START_URL: "https://acme.awsapps.com/start",
+      AWS_SSO_ACCOUNT_ID: "${user_config.sso_account_id}",
+      AWS_SSO_ROLE_NAME: "${user_config.sso_role_name}",
+      PARTNER_CENTRAL_DEFAULT_CATALOG: "${user_config.default_catalog}",
+    },
+    () => loadConfig(),
+  );
+  assert.equal(cfg.sso.accountId, undefined);
+  assert.equal(cfg.sso.roleName, undefined);
+  assert.equal(cfg.defaultCatalog, "AWS");
+});
+
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail === 0 ? 0 : 1);
