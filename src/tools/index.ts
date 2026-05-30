@@ -227,6 +227,43 @@ export async function runSelectAccount(
   }
 }
 
+/**
+ * Classify a thrown error from the verify_connection probe (a read-only getSession
+ * for a non-existent id) into a connection verdict.
+ *
+ * LOAD-BEARING: "healthy" is ANY processed JSON-RPC reply that is not an auth or
+ * access failure — do NOT narrow it to a specific not-found code. A processed
+ * reply (e.g. "session not found") proves SSO + SigV4 + reachability succeeded,
+ * and this endpoint's error shapes drift from the docs (see CLAUDE.md gotcha #1),
+ * so matching one code would silently regress to false "unhealthy". Pinned by
+ * test/verify-connection.test.mjs.
+ */
+export function classifyVerifyError(err: unknown): "healthy" | "transient" | "failed" {
+  if (!(err instanceof PartnerCentralError)) return "failed";
+  // Auth / authorization problems are genuine setup failures.
+  if (
+    err.code === ERROR_CODE.AUTHENTICATION_FAILURE ||
+    err.code === ERROR_CODE.ACCESS_DENIED ||
+    err.code === ERROR_CODE.TOOL_PERMISSION_DENIED ||
+    err.httpStatus === 401 ||
+    err.httpStatus === 403
+  ) {
+    return "failed";
+  }
+  // Reached-but-degraded: a network blip or a server-side error (after retries).
+  // The user's setup is fine; this is transient.
+  if (
+    err.isNetworkError ||
+    err.code === ERROR_CODE.INTERNAL_ERROR ||
+    (err.httpStatus !== undefined && err.httpStatus >= 500)
+  ) {
+    return "transient";
+  }
+  // Any other processed reply (not-found, invalid-request, limit-exceeded, …)
+  // proves the request was authenticated, signed, and handled by the endpoint.
+  return "healthy";
+}
+
 export function registerTools(
   server: McpServer,
   config: PartnerCentralConfig,
@@ -418,9 +455,9 @@ Returns structured content: { ok, catalog, config: { sso_start_url, account_id (
       inputSchema: VerifyConnectionInputSchema.shape,
       outputSchema: VerifyConnectionOutputSchema.shape,
       annotations: {
-        readOnlyHint: false,
+        readOnlyHint: true,
         destructiveHint: false,
-        idempotentHint: false,
+        idempotentHint: true,
         openWorldHint: true,
       },
     },
@@ -479,21 +516,32 @@ Returns structured content: { ok, catalog, config: { sso_start_url, account_id (
         // The probe id resolved to a real session (astronomically unlikely) — still healthy.
         return verified();
       } catch (err) {
-        // A processed business-error reply (e.g. "session not found") still proves
-        // SSO + signing + reachability worked; only network, auth, or access
-        // failures mean the connection/setup is actually broken.
-        if (
-          err instanceof PartnerCentralError &&
-          !err.isNetworkError &&
-          err.code !== ERROR_CODE.AUTHENTICATION_FAILURE &&
-          err.code !== ERROR_CODE.ACCESS_DENIED &&
-          err.code !== ERROR_CODE.TOOL_PERMISSION_DENIED &&
-          err.httpStatus !== 401 &&
-          err.httpStatus !== 403
-        ) {
-          return verified();
+        const verdict = classifyVerifyError(err);
+        // Any processed (non-auth, non-access) reply means SSO + signing +
+        // reachability all worked — the probe's "not found" is the success signal.
+        if (verdict === "healthy") return verified();
+
+        const { summary, lines } = buildSetup();
+
+        if (verdict === "transient") {
+          const detail =
+            err instanceof PartnerCentralError
+              ? describePartnerCentralError(err)
+              : ((err as Error).message ?? String(err));
+          const text = [
+            "⚠️ Could not complete the check — but this looks transient, not a setup problem.",
+            "AWS was reached (or retried), but Partner Central was unreachable or returned a server error. Your SSO start URL / account / role appear fine — retry in a moment.",
+            `Detail: ${detail}`,
+            ...lines,
+          ].join("\n");
+          return {
+            isError: true,
+            content: [{ type: "text" as const, text }],
+            structuredContent: { ok: false, catalog, config: summary, error: detail },
+          };
         }
 
+        // verdict === "failed" — a genuine setup / auth / access problem.
         let message: string;
         if (err instanceof NeedsSelectionError) {
           message =
@@ -506,7 +554,6 @@ Returns structured content: { ok, catalog, config: { sso_start_url, account_id (
         } else {
           message = `Unexpected error: ${(err as Error).message ?? String(err)}`;
         }
-        const { summary, lines } = buildSetup();
         const structured = {
           ok: false,
           catalog,
