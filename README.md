@@ -64,6 +64,10 @@ The Partner Central agent supports the full AWS co-sell workflow. Example prompt
 - "Am I eligible for any funding programs on opportunity O6789012345?"
 - "Create a MAP benefit application for this opportunity."
 
+**Account & role** *(if your sign-in can reach more than one)*
+- "Switch to the customd account with the PartnerCentral-Executives role."
+- "Which AWS account am I currently using for Partner Central?"
+
 If you want to continue a conversation later, ask Claude to note the session ID. Sessions live for 48 hours.
 
 ---
@@ -108,6 +112,7 @@ Each reply can include a collapsed **"🔧 Agent activity"** trace showing the i
 | `partner_central_respond_to_approval` | Approve / reject / override a pending write operation (status `requires_approval`). The only path through which writes execute. | **destructive** |
 | `partner_central_get_session` | Retrieve the transcript and state of an existing session by ID. | read-only, idempotent |
 | `partner_central_verify_connection` | Diagnostic — sends a benign test message in **Sandbox** to confirm SSO + SigV4 + endpoint all work. | not read-only (creates a throwaway session) |
+| `partner_central_select_account` | Pick or switch which AWS account + role the extension uses, in-chat. Surfaced when your sign-in can reach multiple account/role combos; the choice is remembered. | not read-only, not destructive, idempotent |
 
 ---
 

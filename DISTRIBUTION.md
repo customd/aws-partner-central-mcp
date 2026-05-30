@@ -98,7 +98,7 @@ This is the fastest path. Anyone with the `.mcpb` file can install it; there is
 no Anthropic review.
 
 1. Create (or use) a **public GitHub repository**: https://github.com/customd/aws-partner-central-mcp
-2. Cut a **GitHub Release** and **attach `dist/aws-partner-central.mcpb`** as a release asset. Tag the release to match the manifest `version` (currently `1.0.4`).
+2. Cut a **GitHub Release** and **attach `dist/aws-partner-central.mcpb`** as a release asset. Tag the release to match the manifest `version` (currently `1.0.6`).
 3. End users install by:
    - **Claude Desktop → Settings → Extensions**, then
    - **drag-and-drop the `.mcpb`** into the Extensions panel (or **double-click** the file), then
@@ -130,11 +130,12 @@ https://claude.com/docs/connectors/building/submission
 > submissions are **rejected**.
 
 1. **Tool annotations on EVERY tool.** Each tool must declare its behavior hints — at minimum `readOnlyHint` and `destructiveHint` (this project also sets `idempotentHint` and `openWorldHint`). **This is the #1 rejection cause (~30% of denials).**
-   - **Status in this project:** all four tools in `src/tools/index.ts` are fully annotated, and each carries an `outputSchema`:
+   - **Status in this project:** all five tools in `src/tools/index.ts` are fully annotated, and each carries an `outputSchema`:
      - `partner_central_send_message` → `readOnlyHint: false`, `destructiveHint: false`, `idempotentHint: false`, `openWorldHint: true`
      - `partner_central_respond_to_approval` → `readOnlyHint: false`, **`destructiveHint: true`**, `idempotentHint: false`, `openWorldHint: true` (this is the tool that actually executes writes)
      - `partner_central_get_session` → `readOnlyHint: true`, `destructiveHint: false`, `idempotentHint: true`, `openWorldHint: true`
      - `partner_central_verify_connection` → `readOnlyHint: false`, `destructiveHint: false`, `idempotentHint: false`, `openWorldHint: true` (creates a throwaway Sandbox session, so not read-only)
+     - `partner_central_select_account` → `readOnlyHint: false`, `destructiveHint: false`, `idempotentHint: true`, `openWorldHint: true` (validates against AWS and pins the account/role; no remote write)
    - **Action:** if you add or change tools, annotate them too, and re-confirm before submitting.
 
 2. **Published privacy policy.** A publicly reachable privacy policy is **required** — **missing = immediate rejection.** Host `PRIVACY.md` publicly (it renders directly on GitHub) and include the link in the submission and in the README. Use the canonical URL, e.g.
@@ -220,5 +221,5 @@ Copy this into your release issue/PR and tick every box before submitting:
 ## Versioning reminder
 
 Keep `version` in **`manifest.json`** and **`package.json`** in lockstep, and tag
-each GitHub Release to match (currently `1.0.4`). Claude Desktop uses the manifest
+each GitHub Release to match (currently `1.0.6`). Claude Desktop uses the manifest
 version to detect and offer updates to installed extensions.

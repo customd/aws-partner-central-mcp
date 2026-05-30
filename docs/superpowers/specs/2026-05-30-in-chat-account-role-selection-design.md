@@ -80,6 +80,12 @@ When multiple combos exist and the client lacks elicitation (Desktop):
 - **No elicitation and not driven to `select_account`:** the text list remains as a last-resort
   fallback (unchanged behavior, improved wording).
 
+> **Note (validated 2026-05-30):** Claude may render the numbered options as a display-only
+> artifact on its own (as observed when prompted). That is cosmetic — it cannot call our local
+> stdio tools. The authoritative pinning always goes through `partner_central_select_account`,
+> which works in Claude Desktop, Claude Code, and restricted networks. We do not depend on
+> extension-served MCP Apps UI (see Non-goals: claude-ai-mcp #165/#274).
+
 ### Internals / components
 
 - `services/sso-auth.ts` (`SsoCredentialResolver`):
