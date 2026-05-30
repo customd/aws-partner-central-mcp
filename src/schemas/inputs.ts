@@ -116,7 +116,7 @@ export type RespondToApprovalInput = z.infer<typeof RespondToApprovalInputSchema
 export const VerifyConnectionInputSchema = z
   .object({
     catalog: CatalogSchema.optional().describe(
-      "Catalog to verify against. Defaults to 'Sandbox' for safety regardless of the configured default, so this never touches production data.",
+      "Catalog to verify against. Omit to use the configured default catalog. The check is a read-only lookup of a non-existent session, so it creates nothing in any catalog.",
     ),
   })
   .strict();

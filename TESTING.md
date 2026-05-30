@@ -15,7 +15,7 @@ writes here are safe.
 
 ## 1. Connection (auth + SigV4 + endpoint)
 - Prompt: **"Verify my Partner Central connection."**
-- Expect: ✅ "connection verified", catalog `Sandbox`, a `session-…` id, and a short agent reply.
+- Expect: ✅ "connection verified" against your default catalog, reporting SSO + signing + reachability all OK. (It's a read-only probe — no session id or agent reply.)
 
 ## 2. Basic agent interaction (read)
 - Prompt: **"What can you help me with?"**

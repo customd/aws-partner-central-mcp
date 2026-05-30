@@ -44,7 +44,7 @@ A Claude Desktop extension (local MCPB) that bridges Claude to AWS's hosted Part
 - `partner_central_send_message` — readOnlyHint:false, destructiveHint:false
 - `partner_central_respond_to_approval` — readOnlyHint:false, **destructiveHint:true** (executes approved writes)
 - `partner_central_get_session` — readOnlyHint:true, idempotentHint:true
-- `partner_central_verify_connection` — readOnlyHint:false (creates a throwaway Sandbox session)
+- `partner_central_verify_connection` — readOnlyHint:false (read-only reachability probe; creates nothing, may trigger SSO sign-in)
 - `partner_central_select_account` — readOnlyHint:false, destructiveHint:false, idempotentHint:true
 
 **Setup instructions:**
@@ -73,7 +73,7 @@ IAM-permission guidance: README → "IAM permissions".
 
 **Test account / credentials for reviewers:**
 Live use requires an AWS Partner Central account enrolled via IAM Identity Center, which reviewers won't have by default. Options we can provide:
-- The `partner_central_verify_connection` tool runs a benign check against the **Sandbox** catalog (no production data).
+- The `partner_central_verify_connection` tool runs a read-only reachability probe (a non-existent-session lookup that creates nothing); reviewers can target the **Sandbox** catalog explicitly via the `catalog` argument.
 - On request (via the support URL or `mcp-review@anthropic.com` thread), we can provision a **temporary scoped test SSO account** limited to the Sandbox catalog, or do a **live screen-share demo**.
 Please reach out and we'll arrange reviewer access promptly.
 

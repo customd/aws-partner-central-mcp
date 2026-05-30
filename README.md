@@ -33,7 +33,7 @@ A drag-and-drop Claude Desktop extension that connects Claude to the **AWS Partn
 
 The first time you use a Partner Central tool, your default browser opens to authorize the extension. Click **Allow access** and return to Claude.
 
-> **Tip:** the very first thing to try is asking Claude to *"verify my Partner Central connection."* That runs a safe Sandbox check and triggers sign-in.
+> **Tip:** the very first thing to try is asking Claude to *"verify my Partner Central connection."* That runs a safe, read-only connection probe and triggers sign-in.
 
 ---
 
@@ -111,7 +111,7 @@ Each reply can include a collapsed **"🔧 Agent activity"** trace showing the i
 | `partner_central_send_message` | Send a natural-language message (optionally with file attachments) to the Partner Central agent. Supports optional `session_id` for continuation and `catalog` override. | not read-only, not destructive |
 | `partner_central_respond_to_approval` | Approve / reject / override a pending write operation (status `requires_approval`). The only path through which writes execute. | **destructive** |
 | `partner_central_get_session` | Retrieve the transcript and state of an existing session by ID. | read-only, idempotent |
-| `partner_central_verify_connection` | Diagnostic — sends a benign test message in **Sandbox** to confirm SSO + SigV4 + endpoint all work. | not read-only (creates a throwaway session) |
+| `partner_central_verify_connection` | Diagnostic — a read-only reachability probe (looks up a non-existent session) confirming SSO + SigV4 + endpoint all work. | creates nothing; may trigger sign-in |
 | `partner_central_select_account` | Pick or switch which AWS account + role the extension uses, in-chat. Surfaced when your sign-in can reach multiple account/role combos; the choice is remembered. | not read-only, not destructive, idempotent |
 
 ---
