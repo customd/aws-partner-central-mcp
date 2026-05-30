@@ -63,6 +63,12 @@ Driven end-to-end against the live endpoint:
 ## 8. Error handling (optional)
 - Reuse a Sandbox `session_id` with `catalog: AWS` → expect a clear `InvalidRequest` / cross-catalog message rather than a crash.
 
+## 9. Multi-account selection (only if your sign-in can reach multiple account/role combos)
+- With **no saved pick**, a first message (e.g. **"List my open opportunities."**) lists the available account/role options and asks which to use.
+- Calling `select_account` with a listed pair (e.g. **"Use account 123456789012 with role PartnerCentral-Executives."**) pins it; the original request then proceeds.
+- A follow-up message does **not** re-prompt — it reuses the saved pick.
+- Selecting a different listed pair (**"Switch to the customd account with the PartnerCentral-Executives role."**) switches the active identity for subsequent requests.
+
 ---
 
 ### Pass criteria
@@ -71,4 +77,5 @@ Driven end-to-end against the live endpoint:
 - [ ] 5 returns `requires_approval` and only writes after explicit approval
 - [ ] 6 reject/override behave as described
 - [ ] 7 transcript retrieval works
+- [ ] 9 (multi-account only) select pins, no re-prompt on follow-up, switching works
 - [ ] No unhandled crashes; errors are human-readable

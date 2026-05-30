@@ -18,8 +18,8 @@ MCP endpoint** (`https://partnercentral-agents-mcp.us-east-1.api.aws/mcp`, `us-e
 does is built on those. "All functionality" means the documented *capabilities* of those two tools (text,
 **file attachments**, **human-in-the-loop write approval**), not more remote tools.
 
-We expose **4 tools** to Claude: `partner_central_send_message`, `partner_central_respond_to_approval`,
-`partner_central_get_session`, `partner_central_verify_connection`.
+We expose **5 tools** to Claude: `partner_central_send_message`, `partner_central_respond_to_approval`,
+`partner_central_get_session`, `partner_central_verify_connection`, `partner_central_select_account`.
 
 ## Layout
 
@@ -116,6 +116,6 @@ build before running (npm test's `pretest` does this). Keep that style; inject m
 
 ## State (update as you go)
 
-- Latest release: **v1.0.5** (fixes blank-optional-field `${...}` placeholder crash → "Could not attach"; see gotcha #7). `main` in sync at tag `v1.0.5`.
+- Latest release: **v1.0.6** (adds `partner_central_select_account`: in-chat account/role pick + switch). `main` in sync at tag `v1.0.6`.
 - Known follow-ups: verify the prod test opportunity **O21117997** was actually closed; Windows install smoke
   test (only macOS verified); directory submission pending the user.

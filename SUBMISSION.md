@@ -7,7 +7,7 @@ Copy-paste content for the **Desktop Extensions submission form**.
 - Local desktop extensions (MCPB) **are** eligible for the directory.
 - Review time varies with queue; escalations: `mcp-review@anthropic.com`.
 
-> **Pre-flight (all current ✅):** `npx mcpb validate manifest.json` passes; every tool has a `title` + `readOnlyHint`/`destructiveHint`; README has a **Privacy Policy** section and `manifest.json` has a `privacy_policies` array; `PRIVACY.md` is public; README has setup + ≥3 examples + support contact; the **v1.0.4** `.mcpb` is attached to the GitHub release.
+> **Pre-flight (all current ✅):** `npx mcpb validate manifest.json` passes; every tool has a `title` + `readOnlyHint`/`destructiveHint`; README has a **Privacy Policy** section and `manifest.json` has a `privacy_policies` array; `PRIVACY.md` is public; README has setup + ≥3 examples + support contact; the **v1.0.6** `.mcpb` is attached to the GitHub release.
 
 ---
 
@@ -25,25 +25,27 @@ A Claude Desktop extension (local MCPB) that bridges Claude to AWS's hosted Part
 2. "Give me a summary of opportunity O1234567890 and tell me what I need to do next."
 3. "Am I eligible for any funding programs on opportunity O6789012345?"
 4. "Here are my call notes (attached PDF) — create an opportunity from this transcript." (then approve the proposed write)
+5. "Switch to the customd account with the PartnerCentral-Executives role." (when your sign-in can reach several account/role combos)
 
 **Category / tags:** Sales · CRM · AWS · Productivity
 
 **Repository / documentation:** <https://github.com/customd/aws-partner-central-mcp> (README is the public docs link)
 
-**Artifact:** v1.0.4 release — `aws-partner-central.mcpb` attached:
-<https://github.com/customd/aws-partner-central-mcp/releases/tag/v1.0.4>
+**Artifact:** v1.0.6 release — `aws-partner-central.mcpb` attached:
+<https://github.com/customd/aws-partner-central-mcp/releases/tag/v1.0.6>
 
 **Authentication type:** AWS IAM Identity Center (AWS SSO) device-authorization flow + AWS SigV4 request signing. **No Claude OAuth** and **no claude.ai/claude.com OAuth callback URLs** apply — auth is between the user's machine and their own AWS account.
 
 **Transport protocol:** Local **stdio** (MCPB desktop extension). The local server bridges to AWS's remote HTTPS JSON-RPC endpoint (`partnercentral-agents-mcp.us-east-1.api.aws`, TLS 1.2+, SigV4).
 
-**Capabilities:** Tools only (4). No resources, no prompts. Not an MCP App (no custom UI).
+**Capabilities:** Tools only (5). No resources, no prompts. Not an MCP App (no custom UI).
 
 **Tools (all have `title` + annotations):**
 - `partner_central_send_message` — readOnlyHint:false, destructiveHint:false
 - `partner_central_respond_to_approval` — readOnlyHint:false, **destructiveHint:true** (executes approved writes)
 - `partner_central_get_session` — readOnlyHint:true, idempotentHint:true
 - `partner_central_verify_connection` — readOnlyHint:false (creates a throwaway Sandbox session)
+- `partner_central_select_account` — readOnlyHint:false, destructiveHint:false, idempotentHint:true
 
 **Setup instructions:**
 1. Install the `.mcpb` in Claude Desktop → Settings → Extensions.
