@@ -116,6 +116,6 @@ build before running (npm test's `pretest` does this). Keep that style; inject m
 
 ## State (update as you go)
 
-- Latest release: **v1.0.6** (adds `partner_central_select_account`: in-chat account/role pick + switch). `main` in sync at tag `v1.0.6`.
+- Latest release: **v1.0.7** (`select_account` in-chat picker; read-only `verify_connection` probe against the default catalog; `author.url` → org profile). `main` in sync at tag `v1.0.7`.
 - Known follow-ups: verify the prod test opportunity **O21117997** was actually closed; Windows install smoke
   test (only macOS verified); directory submission pending the user.

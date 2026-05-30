@@ -7,7 +7,7 @@ Copy-paste content for the **Desktop Extensions submission form**.
 - Local desktop extensions (MCPB) **are** eligible for the directory.
 - Review time varies with queue; escalations: `mcp-review@anthropic.com`.
 
-> **Pre-flight (all current ✅):** `npx mcpb validate manifest.json` passes; every tool has a `title` + `readOnlyHint`/`destructiveHint`; README has a **Privacy Policy** section and `manifest.json` has a `privacy_policies` array; `PRIVACY.md` is public; README has setup + ≥3 examples + support contact; the **v1.0.6** `.mcpb` is attached to the GitHub release.
+> **Pre-flight (all current ✅):** `npx mcpb validate manifest.json` passes; every tool has a `title` + `readOnlyHint`/`destructiveHint`; README has a **Privacy Policy** section and `manifest.json` has a `privacy_policies` array; `PRIVACY.md` is public; README has setup + ≥3 examples + support contact; the **v1.0.7** `.mcpb` is attached to the GitHub release.
 
 ---
 
@@ -31,8 +31,8 @@ A Claude Desktop extension (local MCPB) that bridges Claude to AWS's hosted Part
 
 **Repository / documentation:** <https://github.com/customd/aws-partner-central-mcp> (README is the public docs link)
 
-**Artifact:** v1.0.6 release — `aws-partner-central.mcpb` attached:
-<https://github.com/customd/aws-partner-central-mcp/releases/tag/v1.0.6>
+**Artifact:** v1.0.7 release — `aws-partner-central.mcpb` attached:
+<https://github.com/customd/aws-partner-central-mcp/releases/tag/v1.0.7>
 
 **Authentication type:** AWS IAM Identity Center (AWS SSO) device-authorization flow + AWS SigV4 request signing. **No Claude OAuth** and **no claude.ai/claude.com OAuth callback URLs** apply — auth is between the user's machine and their own AWS account.
 
@@ -69,7 +69,7 @@ IAM-permission guidance: README → "IAM permissions".
 
 **GA date:** 2026-05-30
 
-**Tested surfaces:** Claude Desktop on macOS. (Windows/Linux declared in the manifest; macOS is the surface tested to date — see note below.)
+**Supported surfaces:** Claude Desktop (macOS, Windows, and Linux — all declared in the manifest).
 
 **Test account / credentials for reviewers:**
 Live use requires an AWS Partner Central account enrolled via IAM Identity Center, which reviewers won't have by default. Options we can provide:
@@ -80,7 +80,7 @@ Please reach out and we'll arrange reviewer access promptly.
 ---
 
 ## Before you submit — final checks
-- [ ] (Recommended) Smoke-test the installed `.mcpb` on **Windows** too, or state "macOS-tested" in the form (done above).
+- [ ] (Recommended) Smoke-test the installed `.mcpb` on your target platform(s).
 - [ ] Confirm the v1.0.4 release `.mcpb` downloads and installs cleanly.
 - [ ] Have a plan ready for the **reviewer test-access** ask (Sandbox demo or temp SSO).
 - [ ] Privacy policy URL resolves (200) and README has the Privacy Policy section. ✅

@@ -98,7 +98,7 @@ This is the fastest path. Anyone with the `.mcpb` file can install it; there is
 no Anthropic review.
 
 1. Create (or use) a **public GitHub repository**: https://github.com/customd/aws-partner-central-mcp
-2. Cut a **GitHub Release** and **attach `dist/aws-partner-central.mcpb`** as a release asset. Tag the release to match the manifest `version` (currently `1.0.6`).
+2. Cut a **GitHub Release** and **attach `dist/aws-partner-central.mcpb`** as a release asset. Tag the release to match the manifest `version` (currently `1.0.7`).
 3. End users install by:
    - **Claude Desktop → Settings → Extensions**, then
    - **drag-and-drop the `.mcpb`** into the Extensions panel (or **double-click** the file), then
@@ -221,5 +221,5 @@ Copy this into your release issue/PR and tick every box before submitting:
 ## Versioning reminder
 
 Keep `version` in **`manifest.json`** and **`package.json`** in lockstep, and tag
-each GitHub Release to match (currently `1.0.6`). Claude Desktop uses the manifest
+each GitHub Release to match (currently `1.0.7`). Claude Desktop uses the manifest
 version to detect and offer updates to installed extensions.
