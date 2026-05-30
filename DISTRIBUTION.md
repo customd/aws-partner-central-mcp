@@ -134,7 +134,7 @@ https://claude.com/docs/connectors/building/submission
      - `partner_central_send_message` → `readOnlyHint: false`, `destructiveHint: false`, `idempotentHint: false`, `openWorldHint: true`
      - `partner_central_respond_to_approval` → `readOnlyHint: false`, **`destructiveHint: true`**, `idempotentHint: false`, `openWorldHint: true` (this is the tool that actually executes writes)
      - `partner_central_get_session` → `readOnlyHint: true`, `destructiveHint: false`, `idempotentHint: true`, `openWorldHint: true`
-     - `partner_central_verify_connection` → `readOnlyHint: false`, `destructiveHint: false`, `idempotentHint: false`, `openWorldHint: true` (creates a throwaway Sandbox session, so not read-only)
+     - `partner_central_verify_connection` → `readOnlyHint: false`, `destructiveHint: false`, `idempotentHint: false`, `openWorldHint: true` (read-only reachability probe — creates nothing — but may trigger an SSO sign-in, so not flagged read-only)
      - `partner_central_select_account` → `readOnlyHint: false`, `destructiveHint: false`, `idempotentHint: true`, `openWorldHint: true` (validates against AWS and pins the account/role; no remote write)
    - **Action:** if you add or change tools, annotate them too, and re-confirm before submitting.
 
