@@ -9,7 +9,7 @@ import {
   SOURCE_PRODUCT,
 } from "../constants.js";
 import { logger } from "../logger.js";
-import type { AccountRoleSelection, ElicitAccountRole } from "./account-role.js";
+import type { AccountRoleOption, AccountRoleSelection, ElicitAccountRole } from "./account-role.js";
 import { uploadDocument, validateAttachmentPaths } from "./attachment-uploader.js";
 import { signRequest } from "./signer.js";
 import { SsoCredentialResolver } from "./sso-auth.js";
@@ -80,6 +80,16 @@ export class PartnerCentralClient {
   /** The effective account/role once resolved — for surfacing in diagnostics. */
   getResolvedIdentity(): AccountRoleSelection | null {
     return this.resolver.getResolvedIdentity();
+  }
+
+  /** Enumerate the account/role options available to the signed-in user (for the in-chat picker). */
+  listAvailableAccountRoles(): Promise<AccountRoleOption[]> {
+    return this.resolver.listAvailableAccountRoles();
+  }
+
+  /** Pin (or switch to) an explicit account/role. */
+  setSelectedIdentity(sel: AccountRoleSelection): Promise<void> {
+    return this.resolver.setSelectedIdentity(sel);
   }
 
   private nextId(): number {
