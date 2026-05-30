@@ -109,6 +109,44 @@ function makeLabel(
   return `${acct} · ${roleName}`;
 }
 
+export interface OptionDeps {
+  listAccounts: () => Promise<Array<{ accountId: string; accountName?: string }>>;
+  listAccountRoles: (accountId: string) => Promise<string[]>;
+  configAccountId?: string;
+  configRoleName?: string;
+}
+
+/** Enumerate every (account × role) combo the signed-in user can access, labeled for display. */
+export async function buildAccountRoleOptions(deps: OptionDeps): Promise<AccountRoleOption[]> {
+  const accounts = await deps.listAccounts();
+  const nameById = new Map(accounts.map((a) => [a.accountId, a.accountName]));
+  const accountIds = deps.configAccountId
+    ? [deps.configAccountId]
+    : accounts.map((a) => a.accountId);
+
+  const options: AccountRoleOption[] = [];
+  for (const accountId of accountIds) {
+    let roles = await deps.listAccountRoles(accountId);
+    if (deps.configRoleName) roles = roles.filter((r) => r === deps.configRoleName);
+    for (const roleName of roles) {
+      options.push({
+        accountId,
+        roleName,
+        label: makeLabel(accountId, nameById.get(accountId), roleName),
+      });
+    }
+  }
+  return options;
+}
+
+/** Find the option matching an exact (accountId, roleName) pair, or undefined. */
+export function findOption(
+  options: AccountRoleOption[],
+  sel: AccountRoleSelection,
+): AccountRoleOption | undefined {
+  return options.find((o) => o.accountId === sel.accountId && o.roleName === sel.roleName);
+}
+
 /**
  * Determine the effective account ID + role name:
  *   1. explicit config (both set) → use as-is
@@ -130,24 +168,7 @@ export async function resolveAccountRole(deps: ResolveDeps): Promise<AccountRole
     return persisted;
   }
 
-  const accounts = await deps.listAccounts();
-  const nameById = new Map(accounts.map((a) => [a.accountId, a.accountName]));
-  const accountIds = deps.configAccountId
-    ? [deps.configAccountId]
-    : accounts.map((a) => a.accountId);
-
-  const options: AccountRoleOption[] = [];
-  for (const accountId of accountIds) {
-    let roles = await deps.listAccountRoles(accountId);
-    if (deps.configRoleName) roles = roles.filter((r) => r === deps.configRoleName);
-    for (const roleName of roles) {
-      options.push({
-        accountId,
-        roleName,
-        label: makeLabel(accountId, nameById.get(accountId), roleName),
-      });
-    }
-  }
+  const options = await buildAccountRoleOptions(deps);
 
   if (options.length === 0) {
     throw new NoAccessError(
