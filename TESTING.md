@@ -1,6 +1,6 @@
 # Sandbox Acceptance Test
 
-Run this after installing **`aws-partner-central.mcpb` (v1.0.3)** in Claude Desktop with
+Run this after installing **`aws-partner-central.mcpb` (v1.0.4)** in Claude Desktop with
 **Default Catalog = `Sandbox`**. Each step is a prompt you give Claude; the *expected result*
 confirms a capability. The `Sandbox` catalog is isolated from production partner data, so
 writes here are safe.
