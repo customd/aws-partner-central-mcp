@@ -9,6 +9,7 @@ import { AttachmentError } from "../services/attachment-uploader.js";
 import {
   NeedsSelectionError,
   NoAccessError,
+  findOption,
   type AccountRoleOption,
   type ElicitAccountRole,
 } from "../services/account-role.js";
@@ -17,19 +18,26 @@ import {
   GetSessionInputSchema,
   RespondToApprovalInputSchema,
   SendMessageInputSchema,
+  SelectAccountInputSchema,
   VerifyConnectionInputSchema,
   type GetSessionInput,
   type RespondToApprovalInput,
   type SendMessageInput,
+  type SelectAccountInput,
   type VerifyConnectionInput,
 } from "../schemas/inputs.js";
 import {
   AgentResponseOutputSchema,
+  SelectAccountOutputSchema,
   VerifyConnectionOutputSchema,
 } from "../schemas/outputs.js";
 import { formatAgentResponse } from "./format.js";
 import type { ContentBlock, PartnerCentralConfig } from "../types.js";
 import { CATALOG_SANDBOX, ERROR_CODE } from "../constants.js";
+
+function maskAccountId(id: string): string {
+  return id.replace(/\d(?=\d{4})/g, "*");
+}
 
 function describePartnerCentralError(err: PartnerCentralError): string {
   const parts: string[] = [`Error: ${err.message}`];
@@ -113,10 +121,10 @@ function handleError(err: unknown): ReturnType<typeof errorResult> {
   }
   if (err instanceof NeedsSelectionError) {
     const lines = [
-      "You can access more than one AWS Partner Central account/role, and this client couldn't show a picker.",
-      "Choose one and set it in Claude Desktop → Settings → Extensions → AWS Partner Central (Account ID and/or Role Name), then try again. Available options:",
+      "You can access more than one AWS Partner Central account/role, so one must be chosen.",
+      "Show the user these options, ask which to use, then call partner_central_select_account with that account_id and role_name:",
       ...err.options.map(
-        (o, i) => `  ${i + 1}. ${o.label}   (account ${o.accountId}, role ${o.roleName})`,
+        (o, i) => `  ${i + 1}. ${o.label}   (account_id ${o.accountId}, role_name ${o.roleName})`,
       ),
     ];
     return errorResult(lines.join("\n"));
@@ -436,8 +444,8 @@ Returns structured content: { ok, catalog, config: { sso_start_url, account_id (
         let message: string;
         if (err instanceof NeedsSelectionError) {
           message =
-            "Multiple accounts/roles are available and this client couldn't show a picker. Set one in the extension settings. Options: " +
-            err.options.map((o) => o.label).join(" | ");
+            "Multiple accounts/roles are available — ask the user which to use, then call partner_central_select_account with its account_id and role_name. Options: " +
+            err.options.map((o) => `${o.label} (account_id ${o.accountId}, role_name ${o.roleName})`).join(" | ");
         } else if (err instanceof NoAccessError) {
           message = err.message;
         } else if (err instanceof PartnerCentralError) {
@@ -464,6 +472,60 @@ Returns structured content: { ok, catalog, config: { sso_start_url, account_id (
           content: [{ type: "text" as const, text }],
           structuredContent: structured,
         };
+      }
+    },
+  );
+
+  server.registerTool(
+    "partner_central_select_account",
+    {
+      title: "Select AWS Account & Role for Partner Central",
+      description: `Pin which AWS account + permission-set role this extension uses — and switch it later.
+
+Use this when another tool reports that multiple AWS accounts/roles are available and asks the user to choose, or whenever the user wants to switch account/role. Present the options to the user, confirm their choice, then call this with that account_id + role_name. The choice is remembered for future calls. (You may also call it with a best-guess pair to get the list of valid options back in the error.)
+
+Args:
+  - account_id (string, required): the 12-digit AWS account ID, chosen from the listed options.
+  - role_name (string, required): the permission-set / role name in that account.
+
+Returns { ok, account_id (masked), role_name }. If the pair isn't one the user can access, returns an error listing the valid options.`,
+      inputSchema: SelectAccountInputSchema.shape,
+      outputSchema: SelectAccountOutputSchema.shape,
+      annotations: {
+        readOnlyHint: false,
+        destructiveHint: false,
+        idempotentHint: true,
+        openWorldHint: true,
+      },
+    },
+    async (params: SelectAccountInput) => {
+      try {
+        const options = await client.listAvailableAccountRoles();
+        const match = findOption(options, {
+          accountId: params.account_id,
+          roleName: params.role_name,
+        });
+        if (!match) {
+          const lines = [
+            "That account/role isn't one you can access. Choose from:",
+            ...options.map(
+              (o: AccountRoleOption, i: number) =>
+                `  ${i + 1}. ${o.label}   (account_id ${o.accountId}, role_name ${o.roleName})`,
+            ),
+          ];
+          return errorResult(lines.join("\n"));
+        }
+        await client.setSelectedIdentity({
+          accountId: match.accountId,
+          roleName: match.roleName,
+        });
+        const masked = maskAccountId(match.accountId);
+        return successResult(
+          `✅ Using AWS account ${masked} with role ${match.roleName}. I'll remember this for future requests — call partner_central_select_account anytime to switch.`,
+          { ok: true, account_id: masked, role_name: match.roleName },
+        );
+      } catch (err) {
+        return handleError(err);
       }
     },
   );

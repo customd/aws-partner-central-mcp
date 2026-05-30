@@ -13,6 +13,7 @@ const EXPECTED = [
   "partner_central_respond_to_approval",
   "partner_central_get_session",
   "partner_central_verify_connection",
+  "partner_central_select_account",
 ];
 
 const child = spawn("node", ["server/index.js"], {
