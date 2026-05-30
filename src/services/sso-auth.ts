@@ -24,8 +24,10 @@ import {
 import { logger } from "../logger.js";
 import {
   resolveAccountRole,
+  buildAccountRoleOptions,
   readSelection,
   writeSelection,
+  type AccountRoleOption,
   type AccountRoleSelection,
   type ElicitAccountRole,
 } from "./account-role.js";
@@ -384,6 +386,36 @@ export class SsoCredentialResolver {
    */
   invalidate(): void {
     this.cached = null;
+  }
+
+  /**
+   * Enumerate every account/role the signed-in user can access — used to present
+   * an in-chat picker and to validate an explicit selection. Read-only; reuses the
+   * cached SSO token (no extra browser sign-in unless the token is missing/expired).
+   */
+  async listAvailableAccountRoles(): Promise<AccountRoleOption[]> {
+    const token = await getOrAcquireSsoToken(this.config);
+    const sso = new SSOClient({ region: this.config.region });
+    try {
+      return await buildAccountRoleOptions({
+        listAccounts: () => listAccounts(sso, token),
+        listAccountRoles: (accountId) => listAccountRoles(sso, token, accountId),
+        configAccountId: this.config.accountId,
+      });
+    } finally {
+      sso.destroy();
+    }
+  }
+
+  /**
+   * Pin (or switch to) an explicit account/role: update the in-memory resolved
+   * identity, persist it, and invalidate cached temp credentials so the next
+   * request uses the new identity.
+   */
+  async setSelectedIdentity(sel: AccountRoleSelection): Promise<void> {
+    this.resolvedIdentity = sel;
+    await writeSelection(this.config.startUrl, sel);
+    this.invalidate();
   }
 
   private async refreshAndCache(): Promise<AwsCredentials> {

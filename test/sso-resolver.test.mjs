@@ -5,7 +5,12 @@
 // Run: node test/sso-resolver.test.mjs
 
 import assert from "node:assert/strict";
+import { promises as fs } from "node:fs";
+import { createHash } from "node:crypto";
+import path from "node:path";
+import os from "node:os";
 import { SsoCredentialResolver } from "../server/services/sso-auth.js";
+import { readSelection } from "../server/services/account-role.js";
 
 let pass = 0;
 let fail = 0;
@@ -163,6 +168,29 @@ await test("after error, a fresh resolve attempts refresh again (no permanent in
   const ok = await handle.resolver.resolve();
   assert.equal(ok.accessKeyId, "AKIA-retry");
   assert.equal(calls, 2);
+});
+
+await test("setSelectedIdentity persists, sets identity, and invalidates creds", async () => {
+  const startUrl = "https://example.awsapps.com/start"; // matches makeResolver's config
+  const handle = makeResolver();
+  await handle.resolver.resolve();                 // refresh #1, creds cached
+  assert.equal(handle.count, 1);
+
+  const sel = { accountId: "222222222222", roleName: "OtherRole" };
+  await handle.resolver.setSelectedIdentity(sel);
+
+  assert.deepEqual(handle.resolver.getResolvedIdentity(), sel);        // in-memory updated
+  assert.deepEqual(await readSelection(startUrl), sel);                // persisted to disk
+
+  await handle.resolver.resolve();                 // creds were invalidated → refresh #2
+  assert.equal(handle.count, 2);
+
+  // cleanup the synthetic selection file
+  const file = path.join(
+    os.homedir(), ".aws-partner-central",
+    `selection-${createHash("sha1").update(startUrl).digest("hex")}.json`,
+  );
+  await fs.unlink(file).catch(() => {});
 });
 
 console.log(`\n${pass} passed, ${fail} failed`);
