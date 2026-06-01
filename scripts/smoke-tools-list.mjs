@@ -93,6 +93,9 @@ try {
     if (!t.annotations || typeof t.annotations.readOnlyHint !== "boolean") {
       fail(`${t.name}: missing readOnlyHint annotation`);
     }
+    if (!t.annotations.title || typeof t.annotations.title !== "string") {
+      fail(`${t.name}: missing annotations.title`);
+    }
     console.log(
       `  PASS  ${t.name} (readOnly=${t.annotations.readOnlyHint}, destructive=${t.annotations.destructiveHint})`,
     );

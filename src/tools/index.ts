@@ -293,12 +293,15 @@ Args:
 Approval workflow:
   If the agent proposes a write (create/update/submit opportunity, create/submit funding application), the response has status 'requires_approval' and describes the proposed change in the reply text. Show the user exactly what will change. To proceed, EITHER reply in this same session with a natural-language partner_central_send_message ("approve", "reject because…", or "change X to Y"), OR call partner_central_get_session to fetch the pending action's tool_use_id and then call partner_central_respond_to_approval. No write executes without your confirmation.
 
-Returns structured content: { session_id, status ('complete'|'requires_approval'|'error'), text, approval_requests?, raw, truncated? }.
+Presentation: the returned 'text' is already formatted for the user and includes clickable links to any opportunities in the AWS console — show it to the user rather than replacing it with a bare summary.
+
+Returns structured content: { session_id, status ('complete'|'requires_approval'|'error'), text, approval_requests?, opportunity_links?, truncated? }. For the full upstream payload, call again with response_format:'json'.
 
 Errors: AuthenticationFailure/-32001 or HTTP 403 (run partner_central_verify_connection); LimitExceeded/-32004 (rate-limited, retry shortly); InvalidRequest (often a cross-catalog session_id); ResourceNotFound/-30001 (session expired or wrong catalog).`,
       inputSchema: SendMessageInputSchema.shape,
       outputSchema: AgentResponseOutputSchema.shape,
       annotations: {
+        title: "Ask Partner Central",
         readOnlyHint: false,
         destructiveHint: false,
         idempotentHint: false,
@@ -329,6 +332,7 @@ Errors: AuthenticationFailure/-32001 or HTTP 403 (run partner_central_verify_con
           parsed,
           params.response_format,
           params.show_activity,
+          catalog,
         );
         return successResult(formatted.text, formatted.structured);
       } catch (err) {
@@ -352,10 +356,11 @@ Args:
   - message (string, optional): Required for 'override', recommended for 'reject'.
   - catalog ('AWS' | 'Sandbox', optional), response_format ('markdown' | 'json', optional).
 
-Returns the agent's response after the decision is applied (same shape as send_message).`,
+Returns the agent's response after the decision is applied (same shape as send_message). Show the returned 'text' (with any clickable opportunity links) to the user rather than only summarizing it.`,
       inputSchema: RespondToApprovalInputSchema.shape,
       outputSchema: AgentResponseOutputSchema.shape,
       annotations: {
+        title: "Respond to Approval",
         readOnlyHint: false,
         destructiveHint: true,
         idempotentHint: false,
@@ -385,6 +390,7 @@ Returns the agent's response after the decision is applied (same shape as send_m
           parsed,
           params.response_format,
           params.show_activity,
+          catalog,
         );
         return successResult(formatted.text, formatted.structured);
       } catch (err) {
@@ -406,12 +412,15 @@ Args:
   - catalog ('AWS' | 'Sandbox', optional): Catalog the session was created in. Sessions are catalog-scoped.
   - response_format ('markdown' | 'json', optional, default 'markdown').
 
-Returns structured content: { session_id, status, text (rendered transcript), events, raw, truncated? }.
+Presentation: show the returned 'text' (rendered transcript, with clickable opportunity links) to the user rather than summarizing it away.
+
+Returns structured content: { session_id, status, text (rendered transcript), events, opportunity_links?, truncated? }. For the full upstream payload, call again with response_format:'json'.
 
 Errors: ResourceNotFound/-30001 (session expired >48h or wrong catalog); HTTP 403 / AuthenticationFailure (SSO expired or insufficient permissions).`,
       inputSchema: GetSessionInputSchema.shape,
       outputSchema: AgentResponseOutputSchema.shape,
       annotations: {
+        title: "Get Conversation Session",
         readOnlyHint: true,
         destructiveHint: false,
         idempotentHint: true,
@@ -427,7 +436,7 @@ Errors: ResourceNotFound/-30001 (session expired >48h or wrong catalog); HTTP 40
           catalog,
         });
         const parsed = parseAgentResponse(raw);
-        const formatted = formatAgentResponse(parsed, params.response_format);
+        const formatted = formatAgentResponse(parsed, params.response_format, true, catalog);
         return successResult(formatted.text, formatted.structured);
       } catch (err) {
         return handleError(err);
@@ -455,6 +464,7 @@ Returns structured content: { ok, catalog, config: { sso_start_url, account_id (
       inputSchema: VerifyConnectionInputSchema.shape,
       outputSchema: VerifyConnectionOutputSchema.shape,
       annotations: {
+        title: "Verify Connection",
         readOnlyHint: true,
         destructiveHint: false,
         idempotentHint: true,
@@ -592,6 +602,7 @@ Returns { ok, account_id (masked), role_name }. If the pair isn't one the user c
       inputSchema: SelectAccountInputSchema.shape,
       outputSchema: SelectAccountOutputSchema.shape,
       annotations: {
+        title: "Select Account / Role",
         readOnlyHint: false,
         destructiveHint: false,
         idempotentHint: true,
