@@ -39,7 +39,7 @@ export const MAX_RETRY_ATTEMPTS = 3;
 export const RETRY_BASE_DELAY_MS = 1000;
 
 export const SERVER_NAME = "aws-partner-central-mcp-server";
-export const SERVER_VERSION = "1.0.7";
+export const SERVER_VERSION = "1.0.8";
 
 export const CRED_REFRESH_WINDOW_MS = 60_000;
 

@@ -89,6 +89,12 @@ build before running (npm test's `pretest` does this). Keep that style; inject m
    stderr doesn't reach Desktop's per-server log (crash precedes transport connect), so diagnose by running the bundle
    directly with that env. Regressed in **v1.0.3** (account/role became optional), fixed in **v1.0.5**. Pinned by
    `test/config.test.mjs` → "treats unsubstituted ${...} placeholders".
+8. **`structuredContent` deliberately excludes `raw`.** A large untyped `raw` blob made Claude
+   Desktop render the tool-result disclosure **blank** (display-only bug; the model still receives
+   the `content` text, so Claude can still answer). `format.ts#buildStructured` omits it on purpose —
+   the full upstream payload is reachable via `response_format:'json'` or `get_session`. Don't
+   "helpfully" re-add it. Pinned by `test/format.test.mjs` → "structuredContent no longer carries the
+   raw payload".
 
 ## Live testing & safety
 
@@ -116,6 +122,6 @@ build before running (npm test's `pretest` does this). Keep that style; inject m
 
 ## State (update as you go)
 
-- Latest release: **v1.0.7** (`select_account` in-chat picker; read-only `verify_connection` probe against the default catalog; `author.url` → org profile). `main` in sync at tag `v1.0.7`.
+- Latest release: **v1.0.7**. **v1.0.8** (branch `feat/reply-visibility-opportunity-links`, pending release) adds clickable opportunity console links in replies, friendly tool labels (`annotations.title`), a status emoji, and removes `raw` from `structuredContent` (blank-disclosure fix; full payload via `response_format:'json'`/`get_session`). `gh release create v1.0.8 …` (moacode account) is the user's manual step.
 - Known follow-ups: verify the prod test opportunity **O2100000** was actually closed; Windows install smoke
   test (only macOS verified); directory submission pending the user.

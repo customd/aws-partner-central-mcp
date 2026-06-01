@@ -9,6 +9,7 @@ A drag-and-drop Claude Desktop extension that connects Claude to the **AWS Partn
 - **Human-in-the-loop approval** — no write (create/update/submit) executes without your explicit confirmation
 - **48-hour sessions** so conversations can be resumed
 - **Production-grade** error handling, rate-limit-aware retries, and automatic credential refresh
+- **Clickable opportunity links** — replies turn `O…` opportunity IDs into direct links to the AWS Partner Central console (production catalog), and tools show friendly names (e.g. *Ask Partner Central*, *Respond to Approval*) in supporting clients
 
 ---
 
