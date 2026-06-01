@@ -3,6 +3,16 @@ export const DEFAULT_ENDPOINT = "https://partnercentral-agents-mcp.us-east-1.api
 export const DEFAULT_REGION = "us-east-1";
 
 /**
+ * Base URL for deep-linking to an opportunity in the AWS Partner Central
+ * console. Partner Central is us-east-1 only (the Selling API has no other
+ * region), so the console host is pinned to us-east-1 and NO `region=` query
+ * param is needed — the opportunity resolves by its `O…` ID alone. Final link:
+ * `${BASE}/<opportunityId>`.
+ */
+export const PARTNER_CENTRAL_CONSOLE_OPPORTUNITY_BASE =
+  "https://us-east-1.console.aws.amazon.com/partnercentral/opportunities";
+
+/**
  * AWS-recommended client-identification metadata sent in the `_meta` field of
  * every tools/call request, so AWS can attribute traffic to this integration.
  * See: "Signing your calls with MCP header" (Method 1) in the AWS docs.
