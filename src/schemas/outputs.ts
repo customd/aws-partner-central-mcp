@@ -47,7 +47,10 @@ export const AgentResponseOutputSchema = z.object({
   is_error: z.boolean().optional(),
   truncated: z.boolean().optional(),
   original_length: z.number().optional(),
-  raw: z.unknown(),
+  opportunity_links: z
+    .array(z.object({ id: z.string(), url: z.string() }))
+    .optional()
+    .describe("Opportunities referenced in the reply, linked to the AWS console."),
 });
 
 export const VerifyConnectionOutputSchema = z.object({

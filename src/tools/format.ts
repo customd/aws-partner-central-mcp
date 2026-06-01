@@ -4,6 +4,7 @@ import type {
   ApprovalRequest,
   NormalizedAgentResponse,
 } from "../types.js";
+import { linkifyOpportunities, type OpportunityLink } from "./console-links.js";
 
 export interface FormattedToolResult {
   text: string;
@@ -20,7 +21,10 @@ function mapApprovalRequests(
   }));
 }
 
-function buildStructured(parsed: NormalizedAgentResponse): Record<string, unknown> {
+function buildStructured(
+  parsed: NormalizedAgentResponse,
+  links: OpportunityLink[],
+): Record<string, unknown> {
   const structured: Record<string, unknown> = {
     text: parsed.text,
   };
@@ -33,8 +37,11 @@ function buildStructured(parsed: NormalizedAgentResponse): Record<string, unknow
   if (parsed.activity !== undefined && parsed.activity.length > 0) {
     structured.activity = parsed.activity;
   }
+  if (links.length > 0) structured.opportunity_links = links;
   if (parsed.isError) structured.is_error = true;
-  structured.raw = parsed.raw;
+  // `raw` is intentionally NOT mirrored here: an untyped blob makes Claude
+  // Desktop render the result disclosure blank. The full payload is available
+  // via response_format:"json" (and partner_central_get_session).
   return structured;
 }
 
@@ -129,23 +136,39 @@ function renderGenericApprovalNote(): string {
   ].join("\n");
 }
 
+/** Small leading glyph for the Status line, for quick visual scanning. */
+function statusEmoji(status?: string): string {
+  switch (status) {
+    case "complete":
+      return "✅ ";
+    case "requires_approval":
+      return "⚠️ ";
+    case "error":
+      return "❌ ";
+    default:
+      return "";
+  }
+}
+
 export function formatAgentResponse(
   parsed: NormalizedAgentResponse,
   format: "markdown" | "json",
   showActivity = true,
+  catalog?: string,
 ): FormattedToolResult {
-  const structured = buildStructured(parsed);
+  const { text: linkedReply, links } = linkifyOpportunities(parsed.text, catalog);
+  const structured = buildStructured(parsed, links);
 
   let text: string;
   if (format === "json") {
     text = JSON.stringify(parsed.raw, null, 2);
   } else {
     const lines: string[] = [];
-    if (parsed.status) lines.push(`**Status:** ${parsed.status}`);
+    if (parsed.status) lines.push(`**Status:** ${statusEmoji(parsed.status)}${parsed.status}`);
     if (parsed.sessionId) lines.push(`**Session:** \`${parsed.sessionId}\``);
     if (lines.length > 0) lines.push("");
     if (parsed.text) {
-      lines.push(parsed.text);
+      lines.push(linkedReply);
     } else if (!parsed.approvalRequests || parsed.approvalRequests.length === 0) {
       lines.push("_(no text content returned)_");
     }
@@ -165,8 +188,8 @@ export function formatAgentResponse(
     const kept = text.slice(0, CHARACTER_LIMIT);
     const message =
       `\n\n_[Visible text truncated from ${originalLength.toLocaleString()} to ${CHARACTER_LIMIT.toLocaleString()} characters. ` +
-      `The complete payload is in the tool's structuredContent ('raw' field) — read from there for the full data, ` +
-      `or call partner_central_get_session with the session_id for individual events.]_`;
+      `Call this tool again with response_format:'json' for the complete payload, ` +
+      `or partner_central_get_session with the session_id for individual events.]_`;
     text = kept + message;
     structured.truncated = true;
     structured.original_length = originalLength;

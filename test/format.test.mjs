@@ -32,7 +32,7 @@ test("markdown: short text is not truncated", () => {
     "markdown",
   );
   assert.equal(r.structured.truncated, undefined);
-  assert.match(r.text, /\*\*Status:\*\* complete/);
+  assert.match(r.text, /\*\*Status:\*\* ✅ complete/);
   assert.match(r.text, /hello/);
 });
 
@@ -109,6 +109,48 @@ test("json: returns the raw payload", () => {
   );
   assert.match(r.text, /"foo": 1/);
   assert.equal(r.structured.text, "hi");
+});
+
+test("markdown: opportunity IDs are linked for the AWS catalog", () => {
+  const r = formatAgentResponse(
+    { text: "See opportunity O7000000 for details.", status: "complete", isError: false, raw: {} },
+    "markdown",
+    true,
+    "AWS",
+  );
+  assert.match(
+    r.text,
+    /\[O7000000\]\(https:\/\/us-east-1\.console\.aws\.amazon\.com\/partnercentral\/opportunities\/O7000000\)/,
+  );
+  assert.ok(Array.isArray(r.structured.opportunity_links));
+  assert.equal(r.structured.opportunity_links[0].id, "O7000000");
+});
+
+test("markdown: opportunity IDs are NOT linked for the Sandbox catalog", () => {
+  const r = formatAgentResponse(
+    { text: "See opportunity O7000000 for details.", status: "complete", isError: false, raw: {} },
+    "markdown",
+    true,
+    "Sandbox",
+  );
+  assert.ok(!/\]\(https:\/\//.test(r.text), "no markdown link for Sandbox");
+  assert.equal(r.structured.opportunity_links, undefined);
+});
+
+test("structuredContent no longer carries the raw payload", () => {
+  const r = formatAgentResponse(
+    { text: "hi", status: "complete", isError: false, raw: { sessionId: "s", secret: 1 } },
+    "markdown",
+  );
+  assert.equal(r.structured.raw, undefined);
+});
+
+test("markdown: status line shows an emoji for known statuses", () => {
+  const approval = formatAgentResponse(
+    { text: "Proposed.", status: "requires_approval", isError: false, raw: {} },
+    "markdown",
+  );
+  assert.match(approval.text, /\*\*Status:\*\* ⚠️ requires_approval/);
 });
 
 console.log(`\n${pass} passed, ${fail} failed`);
