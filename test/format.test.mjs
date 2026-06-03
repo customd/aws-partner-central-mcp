@@ -3,6 +3,7 @@
 
 import assert from "node:assert/strict";
 import { formatAgentResponse } from "../server/tools/format.js";
+import { CHARACTER_LIMIT, MAX_STRUCTURED_EVENTS } from "../server/constants.js";
 
 let pass = 0;
 let fail = 0;
@@ -143,6 +144,58 @@ test("structuredContent no longer carries the raw payload", () => {
     "markdown",
   );
   assert.equal(r.structured.raw, undefined);
+});
+
+test("get_session: oversized result is capped under the client tool-result limit", () => {
+  // A large session (big rendered text + many/large events) must not be returned
+  // whole — the client rejects results over its token cap and shunts them to an
+  // unreachable temp file. The COMBINED (text + structuredContent) size must fit.
+  const events = Array.from({ length: 60 }, (_, i) => ({
+    data: { role: "assistant", content: "z".repeat(2000) },
+    n: i,
+  }));
+  const r = formatAgentResponse(
+    { text: "y".repeat(80_000), status: "complete", sessionId: "session-1", isError: false, raw: {}, events },
+    "markdown",
+  );
+  const combined = r.text.length + JSON.stringify(r.structured).length;
+  assert.ok(combined <= CHARACTER_LIMIT, `combined ${combined} should be <= ${CHARACTER_LIMIT}`);
+  assert.equal(r.structured.truncated, true);
+});
+
+test("get_session: structuredContent events are capped to the most recent N", () => {
+  const events = Array.from({ length: 100 }, (_, i) => ({ data: { role: "user", content: "hi" }, n: i }));
+  const r = formatAgentResponse(
+    { text: "short transcript", status: "complete", sessionId: "s", isError: false, raw: {}, events },
+    "markdown",
+  );
+  assert.ok(Array.isArray(r.structured.events));
+  assert.ok(r.structured.events.length <= MAX_STRUCTURED_EVENTS, `events ${r.structured.events.length} <= ${MAX_STRUCTURED_EVENTS}`);
+  assert.equal(r.structured.events_truncated, true);
+  assert.equal(r.structured.event_count, 100);
+  // the most-recent events are kept (last one survives)
+  assert.equal(r.structured.events[r.structured.events.length - 1].n, 99);
+});
+
+test("approval_requests survive truncation of an oversized result", () => {
+  // The approval tool_use_id is load-bearing for the write loop — it must never be
+  // dropped even when the transcript is truncated for size.
+  const r = formatAgentResponse(
+    {
+      text: "y".repeat(80_000),
+      status: "requires_approval",
+      sessionId: "s",
+      isError: false,
+      raw: {},
+      approvalRequests: [
+        { toolUseId: "tooluse_keepme", toolName: "update_opportunity_enhanced", parameters: { Identifier: "O1" } },
+      ],
+    },
+    "markdown",
+  );
+  assert.equal(r.structured.truncated, true);
+  assert.ok(Array.isArray(r.structured.approval_requests));
+  assert.equal(r.structured.approval_requests[0].tool_use_id, "tooluse_keepme");
 });
 
 test("markdown: status line shows an emoji for known statuses", () => {

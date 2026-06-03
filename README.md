@@ -179,8 +179,11 @@ Check that the URL in your default browser starts with your SSO portal hostname 
 ### "ToolPermissionDenied" (code -31004)
 The agent tried an operation your role isn't allowed to perform (e.g. `CreateOpportunity`). Ask your administrator to grant the relevant `partnercentral:` action, or use a read-only request.
 
-### "LimitExceeded" (code -32004)
-Partner Central rate-limits `sendMessage` to ~2 requests/minute. The extension retries with backoff; if you still hit it, wait a few seconds.
+### Rate limiting ("LimitExceeded" / "Rate exceeded")
+Partner Central rate-limits `sendMessage` to ~2 requests/minute (burst 10); other operations to ~10/minute. The endpoint signals this either as `LimitExceeded` (code -32004) or as an HTTP 400 `"Rate exceeded. Try again later."` — the extension recognizes **both** and retries with backoff sized to the ~30-second refill window. If you still hit it during bulk work, that's expected rather than a fault: writes run about **1 per 30 seconds**, so closing/updating many opportunities takes a few minutes.
+
+### The agent says an opportunity "isn't ready" to launch / "AWS needs to launch it"
+The Partner Central agent runs an **advisory** readiness check before stage changes. It can report things like _"AWS hasn't marked it Launched on their side"_, _"no marketplace offer linked"_, or _"no customer deal acceptance"_ and conclude it's "not ready". This is **guidance, not a hard rule** — stage progression (including to **Launched** / closed-won) is the **partner's** action, and the Selling API enforces the actual constraints (it will often accept the change regardless). Two tips: (1) ask the agent to **make the change** ("set this opportunity's stage to Launched and proceed"), not whether it's "valid" — the validity framing makes it editorialize and refuse; (2) review and approve the proposed write as usual. The write still requires your explicit approval.
 
 ### "InvalidRequest" / wrong-catalog session
 Sessions are scoped per catalog. A session created in Sandbox cannot be reused in AWS (and vice-versa). Drop the `session_id` or switch catalogs.

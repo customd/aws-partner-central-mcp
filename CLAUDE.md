@@ -95,6 +95,36 @@ build before running (npm test's `pretest` does this). Keep that style; inject m
    the full upstream payload is reachable via `response_format:'json'` or `get_session`. Don't
    "helpfully" re-add it. Pinned by `test/format.test.mjs` → "structuredContent no longer carries the
    raw payload".
+9. **Throttling's LIVE shape is HTTP 400 `{"message":"Rate exceeded. Try again later."}` — NOT the
+   documented `-32004`.** The endpoint throttles `sendMessage` to 2/min (burst 10) and other ops to
+   10/min (burst 20) but signals it as an **HTTP 400 body**, which `isRetryableHttpStatus` treats as
+   fatal — so throttles used to surface raw to the model (confirmed in the *ACE opportunities
+   reconciliation* co-work run: **18** throttles, all surfaced, forcing manual pauses).
+   `partner-central-client.ts#isThrottleError` now recognizes **both** the `-32004` code AND any
+   HTTP 429 / 4xx whose **body** matches `/rate exceeded|throttl|too many requests/i` — keyed on the
+   BODY, not the 400 status, so a genuine bad-request 400 stays non-retryable. Throttle retries use a
+   deeper backoff (`THROTTLE_BASE_DELAY_MS`/`THROTTLE_MAX_DELAY_MS`, ~4–20s × 3 attempts ≈ up to ~30s)
+   to span the refill; transient/5xx keep the short backoff. Pinned by `test/client-retry.test.mjs`.
+10. **Tool results are capped to `CHARACTER_LIMIT` (40k), applied to the COMBINED `text` +
+   `structuredContent`.** The client (Claude Desktop / co-work host loop) rejects results over its
+   ~25k-token cap with "exceeds maximum allowed tokens" and saves them to a temp file the sandboxed
+   agent often **can't read** — so a large `get_session` (esp. `response_format:'json'`, which dumps
+   the whole `raw`) silently dead-ends (seen in the same co-work run). `format.ts` trims to fit: caps
+   `structuredContent.events` to `MAX_STRUCTURED_EVENTS` (20), then drops events / truncates text as
+   needed, and **always preserves `status` + `approval_requests`** (the approval loop's `tool_use_id`).
+   Don't raise `CHARACTER_LIMIT` back to 100k. Pinned by `test/format.test.mjs`.
+11. **The agent's stage-readiness "validation" is ADVISORY, not a hard gate — writes are partner-initiated.**
+   The remote `deal_progression_advisor` / `validate_stage_transition` can return `is_valid:false` with reasons
+   like *"AWS Launch Status REQUIRED — AWS hasn't marked it Launched"*, *"no marketplace offer"*, *"no customer
+   acceptance"*. Those are **soft heuristics**; the Selling API enforces the real constraints and frequently
+   accepts the write anyway. **Empirically confirmed 2026-06-03:** a real `For Visibility Only` opportunity was
+   progressed Qualified→Launched and the Selling API returned `success:true` **while the advisor still said
+   `is_valid:false`** (its rule #1 just checks whether `AWS.LifeCycle.Stage` is null — expected for visibility-only
+   deals — so it's structurally wrong to treat as a gate). Two consequences: (a) the **partner** drives `Stage`
+   (incl. Launched/closed-won); there is no "AWS must launch first" step. (b) **Phrasing matters** — "is this
+   transition valid?" makes the agent editorialize and refuse; an instruction to EXECUTE ("set Stage to Launched
+   and proceed") makes it build the real `update_opportunity_enhanced` write. The extension only forwards — this
+   lives as guidance in the `send_message` tool description; do **not** add a code gate.
 
 ## Live testing & safety
 
@@ -122,6 +152,14 @@ build before running (npm test's `pretest` does this). Keep that style; inject m
 
 ## State (update as you go)
 
-- Latest release: **v1.0.7**. **v1.0.8** (branch `feat/reply-visibility-opportunity-links`, pending release) adds clickable opportunity console links in replies, friendly tool labels (`annotations.title`), a status emoji, and removes `raw` from `structuredContent` (blank-disclosure fix; full payload via `response_format:'json'`/`get_session`). `gh release create v1.0.8 …` (moacode account) is the user's manual step.
+- Latest release: **v1.0.7**. **v1.0.8 + v1.0.9** are on branch `feat/reply-visibility-opportunity-links`, both **pending release** (neither tagged yet — could squash into one tag).
+  - **v1.0.8**: clickable opportunity console links in replies, friendly tool labels (`annotations.title`), a status emoji, and removes `raw` from `structuredContent` (blank-disclosure fix).
+  - **v1.0.9** (scale-resilience, from the *ACE opportunities reconciliation* diagnosis): recognizes the live **HTTP 400 "Rate exceeded"** throttle (not just `-32004`) with a deeper throttle backoff (gotcha #9), and **caps tool-result size** to keep large `get_session`/json payloads under the client's token cap (gotcha #10). `gh release create vX.Y.Z …` (moacode account) is the user's manual step.
 - Known follow-ups: verify the prod test opportunity **O2100000** was actually closed; Windows install smoke
   test (only macOS verified); directory submission pending the user.
+- **"AWS needs to launch" was the advisor hallucinating (see gotcha #11) — proven by doing it.** On 2026-06-03
+  a real `For Visibility Only` opportunity was progressed **Qualified→Launched** via the agent and the Selling
+  API returned `success:true`, even though `validate_stage_transition` reported `is_valid:false`. So
+  the reconciliation's other launch/closed-won items can be launched **directly by the partner** (instruct the
+  agent to EXECUTE — "set Stage to Launched and proceed" — don't ask "is it valid?"); they do **not** need AWS
+  coordination. `send_message`'s description now carries this "Writes & stage progression" guidance.

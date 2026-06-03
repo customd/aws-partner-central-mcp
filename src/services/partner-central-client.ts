@@ -7,6 +7,8 @@ import {
   RETRY_BASE_DELAY_MS,
   SERVICE_NAME,
   SOURCE_PRODUCT,
+  THROTTLE_BASE_DELAY_MS,
+  THROTTLE_MAX_DELAY_MS,
 } from "../constants.js";
 import { logger } from "../logger.js";
 import type { AccountRoleOption, AccountRoleSelection, ElicitAccountRole } from "./account-role.js";
@@ -42,10 +44,41 @@ interface SendOptions {
   signal?: AbortSignal;
 }
 
-type RetryDecision = "none" | "retry" | "reauth";
+type RetryDecision = "none" | "retry" | "reauth" | "throttle";
 
 function isRetryableHttpStatus(status: number): boolean {
   return status === 429 || status === 500 || status === 502 || status === 503 || status === 504;
+}
+
+/** Body/message signatures the endpoint uses for throttling. */
+const THROTTLE_MESSAGE_RE = /rate exceeded|rate limit|throttl|too many requests/i;
+
+/**
+ * Recognize a throttle from ANY of the shapes the endpoint actually uses:
+ *  - JSON-RPC `-32004` LIMIT_EXCEEDED (documented), or
+ *  - HTTP 429, or
+ *  - HTTP 4xx whose body says "Rate exceeded. Try again later." — the LIVE shape
+ *    (observed as HTTP 400), which is otherwise classified non-retryable.
+ * Keying the 4xx case on the BODY (not the status) keeps genuine 400 bad-requests
+ * non-retryable. Exported so the tool layer can render an accurate throttle message.
+ */
+export function isThrottleError(err: unknown): boolean {
+  if (!(err instanceof PartnerCentralError)) return false;
+  if (err.code === ERROR_CODE.LIMIT_EXCEEDED) return true;
+  if (err.httpStatus === 429) return true;
+  if (err.httpStatus !== undefined && err.httpStatus >= 400) {
+    const body = typeof err.data === "string" ? err.data : "";
+    if (THROTTLE_MESSAGE_RE.test(`${err.message} ${body}`)) return true;
+  }
+  return false;
+}
+
+/** Backoff with jitter in [d/2, d]; throttles climb toward the ~30s refill window. */
+function computeBackoffMs(attempt: number, decision: RetryDecision): number {
+  const base = decision === "throttle" ? THROTTLE_BASE_DELAY_MS : RETRY_BASE_DELAY_MS;
+  let exp = base * Math.pow(2, attempt - 1);
+  if (decision === "throttle") exp = Math.min(exp, THROTTLE_MAX_DELAY_MS);
+  return exp / 2 + Math.random() * (exp / 2);
 }
 
 /** Sleep that rejects promptly if the caller-supplied signal aborts. */
@@ -173,9 +206,9 @@ export class PartnerCentralClient {
             { method: payload.method },
           );
         }
-        // Exponential backoff with jitter: delay in [exp/2, exp].
-        const exp = RETRY_BASE_DELAY_MS * Math.pow(2, attempt - 1);
-        const delay = exp / 2 + Math.random() * (exp / 2);
+        // Exponential backoff with jitter; throttles back off much harder (see
+        // computeBackoffMs) to span the ~30s sendMessage refill window.
+        const delay = computeBackoffMs(attempt, decision);
         logger.warn(
           `Retrying Partner Central request (attempt ${attempt + 1}/${MAX_RETRY_ATTEMPTS})`,
           {
@@ -185,7 +218,7 @@ export class PartnerCentralClient {
             error: (err as Error).message,
           },
         );
-        await sleep(delay, options.signal);
+        await this.sleep(delay, options.signal);
       }
     }
     throw lastError as Error;
@@ -198,6 +231,10 @@ export class PartnerCentralClient {
    */
   private classifyRetry(err: unknown, reauthAttempted: boolean): RetryDecision {
     if (!(err instanceof PartnerCentralError)) return "none";
+    // Throttling first — covers the documented -32004 AND the live HTTP 400 "Rate
+    // exceeded" shape, which would otherwise fall through to non-retryable. Gets
+    // the deeper throttle backoff.
+    if (isThrottleError(err)) return "throttle";
     if (err.isNetworkError) return "retry";
     // A JSON-RPC error rides on an HTTP 200 response, so its `code` is the
     // meaningful signal and must be checked BEFORE httpStatus — otherwise the
@@ -206,10 +243,7 @@ export class PartnerCentralClient {
       if (err.code === ERROR_CODE.AUTHENTICATION_FAILURE) {
         return reauthAttempted ? "none" : "reauth";
       }
-      if (
-        err.code === ERROR_CODE.INTERNAL_ERROR ||
-        err.code === ERROR_CODE.LIMIT_EXCEEDED
-      ) {
+      if (err.code === ERROR_CODE.INTERNAL_ERROR) {
         return "retry";
       }
       return "none";
@@ -221,6 +255,11 @@ export class PartnerCentralClient {
       return isRetryableHttpStatus(err.httpStatus) ? "retry" : "none";
     }
     return "none";
+  }
+
+  /** Backoff sleep, isolated as an instance method so tests can stub it. */
+  protected sleep(ms: number, signal?: AbortSignal): Promise<void> {
+    return sleep(ms, signal);
   }
 
   private async invokeOnce<T>(

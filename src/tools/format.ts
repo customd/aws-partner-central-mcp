@@ -1,4 +1,4 @@
-import { CHARACTER_LIMIT } from "../constants.js";
+import { CHARACTER_LIMIT, MAX_STRUCTURED_EVENTS } from "../constants.js";
 import type {
   AgentActivityStep,
   ApprovalRequest,
@@ -30,7 +30,17 @@ function buildStructured(
   };
   if (parsed.sessionId !== undefined) structured.session_id = parsed.sessionId;
   if (parsed.status !== undefined) structured.status = parsed.status;
-  if (parsed.events !== undefined) structured.events = parsed.events;
+  if (parsed.events !== undefined) {
+    // get_session can carry hundreds of events; mirror only the most recent into
+    // structuredContent (the full transcript is still rendered in `text`).
+    if (parsed.events.length > MAX_STRUCTURED_EVENTS) {
+      structured.events = parsed.events.slice(-MAX_STRUCTURED_EVENTS);
+      structured.events_truncated = true;
+      structured.event_count = parsed.events.length;
+    } else {
+      structured.events = parsed.events;
+    }
+  }
   if (parsed.approvalRequests !== undefined && parsed.approvalRequests.length > 0) {
     structured.approval_requests = mapApprovalRequests(parsed.approvalRequests);
   }
@@ -183,16 +193,34 @@ export function formatAgentResponse(
     text = lines.join("\n");
   }
 
-  if (text.length > CHARACTER_LIMIT) {
+  // Keep the COMBINED result (rendered text + serialized structuredContent) under
+  // the client's tool-result cap. Over it, the client rejects the result and saves
+  // it to a temp file the sandboxed agent can't read. Trim the bulkiest/duplicated
+  // parts first; status + approval_requests are small and always preserved.
+  const structuredChars = (): number => JSON.stringify(structured).length;
+
+  // 1. structuredContent.text duplicates the reply already in `text` — bound it.
+  const halfBudget = Math.floor(CHARACTER_LIMIT / 2);
+  if (typeof structured.text === "string" && structured.text.length > halfBudget) {
+    structured.text = structured.text.slice(0, halfBudget) + "…";
+    structured.truncated = true;
+  }
+  // 2. events are the next-biggest duplicated payload (also rendered into `text`).
+  if (structured.events !== undefined && text.length + structuredChars() > CHARACTER_LIMIT) {
+    delete structured.events;
+    structured.events_truncated = true;
+  }
+  // 3. truncate the rendered text to whatever budget remains.
+  if (text.length + structuredChars() > CHARACTER_LIMIT) {
     const originalLength = text.length;
-    const kept = text.slice(0, CHARACTER_LIMIT);
-    const message =
-      `\n\n_[Visible text truncated from ${originalLength.toLocaleString()} to ${CHARACTER_LIMIT.toLocaleString()} characters. ` +
-      `Call this tool again with response_format:'json' for the complete payload, ` +
-      `or partner_central_get_session with the session_id for individual events.]_`;
-    text = kept + message;
     structured.truncated = true;
     structured.original_length = originalLength;
+    const notice = (kept: number): string =>
+      `\n\n_[Output truncated from ${originalLength.toLocaleString()} to ${kept.toLocaleString()} characters — the full result exceeds the client's tool-result size limit. ` +
+      `Narrow the request (ask the agent to summarize, or fetch a specific opportunity/session) to see more; status and pending approvals are preserved above.]_`;
+    const reserve = notice(originalLength).length + 300; // notice + safety margin
+    const kept = Math.max(2_000, CHARACTER_LIMIT - structuredChars() - reserve);
+    text = text.slice(0, kept) + notice(kept);
   }
 
   return { text, structured };

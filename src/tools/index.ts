@@ -4,6 +4,7 @@ import { logger } from "../logger.js";
 import {
   PartnerCentralClient,
   PartnerCentralError,
+  isThrottleError,
 } from "../services/partner-central-client.js";
 import { AttachmentError } from "../services/attachment-uploader.js";
 import {
@@ -50,6 +51,15 @@ function describePartnerCentralError(err: PartnerCentralError): string {
   if (err.httpStatus !== undefined) parts.push(`HTTP ${err.httpStatus}`);
   if (err.code !== undefined) parts.push(`JSON-RPC code ${err.code}`);
 
+  // Throttling can arrive as JSON-RPC -32004 OR as the live HTTP 400 "Rate
+  // exceeded" shape — handle both uniformly with accurate, actionable guidance.
+  if (isThrottleError(err)) {
+    parts.push(
+      "(Rate limited — AWS throttles sendMessage to ~2 requests/minute (burst 10); other operations to ~10/minute. The client already retried with backoff. If it still failed, pause ~30s before retrying — bulk writes run about 1 per 30s, so large batches take a few minutes.)",
+    );
+    return parts.join(" ");
+  }
+
   switch (err.code) {
     case ERROR_CODE.AUTHENTICATION_FAILURE:
       parts.push(
@@ -64,11 +74,6 @@ function describePartnerCentralError(err: PartnerCentralError): string {
     case ERROR_CODE.ACCESS_DENIED:
       parts.push(
         "(AccessDenied — the account may not be enrolled in Partner Central, or there is a region/catalog mismatch.)",
-      );
-      break;
-    case ERROR_CODE.LIMIT_EXCEEDED:
-      parts.push(
-        "(LimitExceeded — Partner Central rate limits sendMessage to ~2 requests/minute. Wait a few seconds and try again.)",
       );
       break;
     case ERROR_CODE.RESOURCE_NOT_FOUND:
@@ -292,6 +297,8 @@ Args:
 
 Approval workflow:
   If the agent proposes a write (create/update/submit opportunity, create/submit funding application), the response has status 'requires_approval' and describes the proposed change in the reply text. Show the user exactly what will change. To proceed, EITHER reply in this same session with a natural-language partner_central_send_message ("approve", "reject because…", or "change X to Y"), OR call partner_central_get_session to fetch the pending action's tool_use_id and then call partner_central_respond_to_approval. No write executes without your confirmation.
+
+Writes & stage progression: opportunity writes — including progressing a stage all the way to 'Launched' (closed-won) — are PARTNER-initiated. The agent may run an advisory readiness check and report an opportunity is "not ready" (e.g. "AWS hasn't launched it on their side", "no marketplace offer linked", "no customer deal acceptance"). That is GUIDANCE, not a hard API constraint — the Selling API enforces the real rules and will often accept the write regardless (confirmed: a 'For Visibility Only' opp was moved to Launched while the advisor said is_valid:false). To actually perform a change, phrase your message as an instruction to EXECUTE it ("set Stage to Launched and proceed", "make the update") — not a validity question ("is this transition valid?"), which makes the agent editorialize and refuse. Always confirm the concrete change with the user before approving the write.
 
 Presentation: the returned 'text' is already formatted for the user and includes clickable links to any opportunities in the AWS console — show it to the user rather than replacing it with a bare summary.
 

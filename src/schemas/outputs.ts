@@ -19,7 +19,12 @@ export const AgentResponseOutputSchema = z.object({
   events: z
     .array(z.unknown())
     .optional()
-    .describe("Conversation transcript events (get_session only)."),
+    .describe("Conversation transcript events (get_session only; most-recent subset when large)."),
+  events_truncated: z
+    .boolean()
+    .optional()
+    .describe("True when only a subset of events is included (the full transcript is in `text`)."),
+  event_count: z.number().optional().describe("Total number of events in the session."),
   approval_requests: z
     .array(
       z.object({

@@ -25,7 +25,7 @@ async function test(name, fn) {
 }
 
 function makeClient() {
-  return new PartnerCentralClient({
+  const c = new PartnerCentralClient({
     endpoint: "https://partnercentral-agents-mcp.us-east-1.api.aws/mcp",
     region: "us-east-1",
     defaultCatalog: "Sandbox",
@@ -36,6 +36,10 @@ function makeClient() {
       region: "us-east-1",
     },
   });
+  // Stub the (instance) backoff sleep so retry tests assert attempt COUNTS without
+  // actually waiting — the throttle backoff is deliberately long in real use.
+  c.sleep = async () => {};
+  return c;
 }
 
 await test("non-retryable error (INVALID_REQUEST) → single attempt", async () => {
@@ -58,6 +62,83 @@ await test("LIMIT_EXCEEDED (-32004) is retried up to the max", async () => {
   };
   await assert.rejects(() => c.callTool("sendMessage", {}));
   assert.equal(n, 3);
+});
+
+await test("live throttle shape (HTTP 400 'Rate exceeded') is retried", async () => {
+  // The live endpoint returns HTTP 400 with this body for throttling — NOT the
+  // documented -32004. classifyRetry must treat it as a throttle (retryable).
+  const c = makeClient();
+  let n = 0;
+  c.invokeOnce = async () => {
+    n += 1;
+    throw new PartnerCentralError(
+      'Partner Central returned HTTP 400: {"message":"Rate exceeded. Try again later."}',
+      undefined,
+      400,
+      '{"message":"Rate exceeded. Try again later."}',
+    );
+  };
+  await assert.rejects(() => c.callTool("sendMessage", {}));
+  assert.equal(n, 3);
+});
+
+await test("HTTP 429 (too many requests) is retried", async () => {
+  const c = makeClient();
+  let n = 0;
+  c.invokeOnce = async () => {
+    n += 1;
+    throw new PartnerCentralError("Partner Central returned HTTP 429", undefined, 429, "");
+  };
+  await assert.rejects(() => c.callTool("sendMessage", {}));
+  assert.equal(n, 3);
+});
+
+await test("HTTP 400 that is NOT a throttle (bad request) is not retried", async () => {
+  // Critical: throttle detection keys on the body text, not httpStatus===400, so a
+  // genuine 400 bad-request must still be non-retryable (single attempt).
+  const c = makeClient();
+  let n = 0;
+  c.invokeOnce = async () => {
+    n += 1;
+    throw new PartnerCentralError(
+      "Partner Central returned HTTP 400: invalid parameter 'stage'",
+      undefined,
+      400,
+      "invalid parameter 'stage'",
+    );
+  };
+  await assert.rejects(() => c.callTool("sendMessage", {}));
+  assert.equal(n, 1);
+});
+
+await test("throttle backoff is longer than transient backoff", async () => {
+  // Throttle must back off across the ~30s sendMessage refill window — far longer
+  // than the short transient/5xx backoff.
+  const throttle = makeClient();
+  const throttleDelays = [];
+  throttle.sleep = async (ms) => {
+    throttleDelays.push(ms);
+  };
+  throttle.invokeOnce = async () => {
+    throw new PartnerCentralError("Rate exceeded. Try again later.", undefined, 400, "Rate exceeded");
+  };
+  await assert.rejects(() => throttle.callTool("sendMessage", {}));
+
+  const transient = makeClient();
+  const transientDelays = [];
+  transient.sleep = async (ms) => {
+    transientDelays.push(ms);
+  };
+  transient.invokeOnce = async () => {
+    throw new PartnerCentralError("ECONNRESET", undefined, undefined, undefined, true);
+  };
+  await assert.rejects(() => transient.callTool("sendMessage", {}));
+
+  assert.ok(throttleDelays.length > 0 && transientDelays.length > 0);
+  assert.ok(
+    Math.min(...throttleDelays) > Math.max(...transientDelays),
+    `throttle delays ${JSON.stringify(throttleDelays)} should all exceed transient ${JSON.stringify(transientDelays)}`,
+  );
 });
 
 await test("transient network errors are retried", async () => {

@@ -29,7 +29,19 @@ export const CATALOG_SANDBOX = "Sandbox";
 export const VALID_CATALOGS = [CATALOG_AWS, CATALOG_SANDBOX] as const;
 export type Catalog = (typeof VALID_CATALOGS)[number];
 
-export const CHARACTER_LIMIT = 100_000;
+/**
+ * Hard cap on the COMBINED size (rendered text + serialized structuredContent) of
+ * a single tool result, as a conservative proxy for the MCP client's tool-result
+ * token cap (~25k tokens in Claude Desktop / co-work). Above this the client
+ * rejects the result ("exceeds maximum allowed tokens") and shunts it to a temp
+ * file the sandboxed agent often can't read — so we must trim BEFORE returning.
+ * 40k chars ≈ <25k tokens even for dense JSON. `format.ts` enforces it by capping
+ * events and truncating text while always preserving status/approval_requests.
+ */
+export const CHARACTER_LIMIT = 40_000;
+
+/** Max conversation events mirrored into structuredContent (get_session can have hundreds). */
+export const MAX_STRUCTURED_EVENTS = 20;
 
 // The agent can take a while for document-heavy or multi-step operations, so
 // the per-request timeout is generous. Rate limits (2 sendMessage/min) make
@@ -38,8 +50,16 @@ export const REQUEST_TIMEOUT_MS = 120_000;
 export const MAX_RETRY_ATTEMPTS = 3;
 export const RETRY_BASE_DELAY_MS = 1000;
 
+// Throttling needs a much deeper backoff than transient errors: sendMessage is
+// limited to ~2/min, so the token bucket refills only ~every 30s. A short retry
+// (≈1-3s) can never clear it, so throttle retries climb toward the refill window.
+// Observed live recovery in bulk runs was ~20-30s. (See the HTTP 400 "Rate
+// exceeded" throttle gotcha — the live shape differs from the documented -32004.)
+export const THROTTLE_BASE_DELAY_MS = 8_000;
+export const THROTTLE_MAX_DELAY_MS = 20_000;
+
 export const SERVER_NAME = "aws-partner-central-mcp-server";
-export const SERVER_VERSION = "1.0.8";
+export const SERVER_VERSION = "1.0.9";
 
 export const CRED_REFRESH_WINDOW_MS = 60_000;
 
