@@ -5,6 +5,7 @@ import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js"
 import { SERVER_NAME, SERVER_VERSION } from "./constants.js";
 import { ConfigError, loadConfig } from "./config.js";
 import { logger } from "./logger.js";
+import { withCompatibleSchemaDialect } from "./schema-dialect.js";
 import { maskAccountId, registerTools } from "./tools/index.js";
 
 async function main(): Promise<void> {
@@ -37,7 +38,10 @@ async function main(): Promise<void> {
 
   registerTools(server, config);
 
-  const transport = new StdioServerTransport();
+  // Hosts that validate tool schemas with an Ajv 2020-12 instance reject the
+  // draft-07 dialect the SDK stamps on every schema, which disables ALL tools before
+  // any handler runs. See schema-dialect.ts and CLAUDE.md gotcha #15.
+  const transport = withCompatibleSchemaDialect(new StdioServerTransport());
 
   let shuttingDown = false;
   const shutdown = (signal: string): void => {

@@ -101,6 +101,21 @@ try {
     );
   }
 
+  // No advertised schema may declare a JSON Schema dialect. Hosts validating with an
+  // Ajv 2020-12 instance reject "$schema": draft-07 outright and disable the tool
+  // before its handler runs, which once took out all 5 tools at once. The SDK stamps
+  // draft-07 on Zod v3 schemas, so src/schema-dialect.ts strips it on the way out.
+  // See CLAUDE.md gotcha #15.
+  for (const t of tools) {
+    for (const which of ["inputSchema", "outputSchema"]) {
+      const dialect = t[which]?.$schema;
+      if (dialect !== undefined) {
+        fail(`${t.name}: ${which} declares a dialect ("$schema": "${dialect}") — must be omitted`);
+      }
+    }
+  }
+  console.log("  PASS  no tool schema declares a $schema dialect");
+
   // Sanity: the write-executing tool must be flagged destructive.
   const approve = tools.find((t) => t.name === "partner_central_respond_to_approval");
   if (approve.annotations.destructiveHint !== true) {

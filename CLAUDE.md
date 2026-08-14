@@ -180,6 +180,42 @@ build before running (npm test's `pretest` does this). Keep that style; inject m
    SDK `build` step, then aborts — no creds, no network). **Still unverified end-to-end**: `CreateToken` +
    `GetRoleCredentials` against a directory genuinely in another region — needs the reporter to confirm.
 
+15. **We must NOT advertise a `$schema` dialect — draft-07 makes strict hosts refuse every tool.**
+   Diagnosed 2026-08-14 after a total outage: all 5 tools failed with
+   *"Tool 'partner_central_verify_connection' has an invalid outputSchema: JSON Schema declares an
+   unsupported dialect (`$schema`: draft-07). The default validator supports JSON Schema 2020-12 only"*.
+   Cause: we use **Zod v3**, so the SDK's `toJsonSchemaCompat` takes its v3 branch and calls
+   `zodToJsonSchema` with **no `target`**, defaulting to draft-07 and stamping
+   `"$schema": "http://json-schema.org/draft-07/schema#"` onto EVERY input and output schema.
+   Hosts that validate tool schemas with an Ajv 2020-12 instance reject that dialect **before the
+   handler runs**, so it takes out all tools at once. **Upgrading the SDK does not fix it** — it
+   hardcodes draft-7 on the Zod v4 path too.
+   - Fix (v1.0.12): `src/schema-dialect.ts` strips `$schema` at the **transport boundary**
+     (`withCompatibleSchemaDialect` wraps `transport.send`), so it covers every response the SDK
+     generates and survives SDK upgrades without touching SDK internals.
+   - **Omit** `$schema`; do NOT declare 2020-12. Omitting lets each host apply its own default, and
+     our schemas only use keywords identical in both dialects (type/properties/required/enum/default/
+     description/minLength/maxLength/pattern/items/maxItems/additionalProperties). Declaring 2020-12
+     would break the mirror-image host that only understands draft-07. Verified no `$ref`/`definitions`
+     are emitted, so nothing depends on `#/definitions` vs `#/$defs`.
+   - **Latent since v1.0.0**, not a regression: same SDK + zod pins in v1.0.9. It surfaced only when the
+     device bridge's **tool-schema refresh** path ran Ajv validation (the initially cached tool list did
+     not), which is why `verify_connection` worked twice and then broke mid-session with no reinstall.
+   - Why testing missed it: `npm test` calls handlers directly, the hand-rolled stdio harnesses never
+     validated schemas, and Claude Code's client does not run this check. `scripts/smoke-tools-list.mjs`
+     now **fails** if any tool advertises a dialect — that is the guard. Pinned by
+     `test/schema-dialect.test.mjs`. Lesson: validating against the client you happen to have is not
+     validating; test through the surface that actually failed.
+16. **Reinstalling the `.mcpb` does NOT reload the running server — Desktop keeps the old process.**
+   Cost real debugging time: after installing v1.0.11, the files on disk were v1.0.11 while the process
+   answering requests was still v1.0.9, so a fixed bug "reproduced" verbatim. Node caches modules at
+   load time, so the old code serves every call until the process restarts. Fingerprint which build is
+   LIVE (never trust the on-disk manifest): `initialize` → `serverInfo.version`, or the shape of
+   `verify_connection` output (two region lines ⇒ ≥v1.0.11), or the version banner in
+   `~/Library/Logs/Claude/mcp-server-AWS Partner Central.log`. To reload: toggle the extension off/on in
+   Settings → Extensions, or fully quit Claude Desktop (Cmd+Q); a Cowork/bridge session must also
+   reconnect. Tell users to restart after upgrading, or they will report the bug you just fixed.
+
 ## Live testing & safety
 
 - The extension is usually connected to the dev session as `mcp__AWS_Partner_Central__*` — but that's the
@@ -207,7 +243,12 @@ build before running (npm test's `pretest` does this). Keep that style; inject m
 ## State (update as you go)
 
 - Latest tag: **v1.0.9** (on `main`; the earlier "v1.0.8/v1.0.9 pending, untagged" note was stale — `git tag`
-  shows v1.0.9 exists). Latest release: **v1.0.11**, which ships TWO independent fixes as one tag — they are
+  shows v1.0.9 exists). Latest release: **v1.0.12**. NOTE v1.0.11 is effectively **broken on strict hosts**
+  (gotcha #15) — always point users at v1.0.12 or later.
+  - **v1.0.12** (schema-dialect hotfix — gotcha #15): stops advertising `"$schema": draft-07`, which made
+    Ajv-2020-12 hosts refuse all 5 tools before any handler ran. Latent since v1.0.0. `scripts/smoke-tools-list.mjs`
+    now fails the build if any tool declares a dialect. Pinned by `test/schema-dialect.test.mjs`.
+  - **v1.0.11** ships TWO independent fixes as one tag — they are
   separate commits (v1.0.10 was never tagged on its own), so read both bullets below when writing release notes.
   - **v1.0.11** (SSO region split — gotcha #14, GitHub issue #2): `AWS_SSO_REGION` / `sso_region` install field
     separates the sign-in region from the us-east-1 signing region; `AWS_REGION` is now ignored; token-cache

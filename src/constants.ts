@@ -72,7 +72,7 @@ export const THROTTLE_BASE_DELAY_MS = 8_000;
 export const THROTTLE_MAX_DELAY_MS = 20_000;
 
 export const SERVER_NAME = "aws-partner-central-mcp-server";
-export const SERVER_VERSION = "1.0.11";
+export const SERVER_VERSION = "1.0.12";
 
 export const CRED_REFRESH_WINDOW_MS = 60_000;
 
