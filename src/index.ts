@@ -25,6 +25,7 @@ async function main(): Promise<void> {
   logger.info("Starting aws-partner-central-mcp-server", {
     version: SERVER_VERSION,
     region: config.region,
+    ssoRegion: config.sso.region,
     defaultCatalog: config.defaultCatalog,
     accountId: maskedAccountId,
   });

@@ -1,6 +1,19 @@
 export const SERVICE_NAME = "partnercentral-agents-mcp";
 export const DEFAULT_ENDPOINT = "https://partnercentral-agents-mcp.us-east-1.api.aws/mcp";
+/**
+ * Region of the Partner Central endpoint — the region requests are SIGNED for.
+ * Partner Central is us-east-1 only, and this must always match the endpoint host
+ * (see regionFromEndpoint in config.ts), never the user's SSO region.
+ */
 export const DEFAULT_REGION = "us-east-1";
+
+/**
+ * Default region of the user's IAM Identity Center instance. This is INDEPENDENT of
+ * DEFAULT_REGION: an Identity Center directory can live in any region (e.g.
+ * eu-central-1) while Partner Central itself stays us-east-1 — the two must not be
+ * conflated. Overridden by AWS_SSO_REGION / the `sso_region` install setting.
+ */
+export const DEFAULT_SSO_REGION = "us-east-1";
 
 /**
  * Base URL for deep-linking to an opportunity in the AWS Partner Central
@@ -59,7 +72,7 @@ export const THROTTLE_BASE_DELAY_MS = 8_000;
 export const THROTTLE_MAX_DELAY_MS = 20_000;
 
 export const SERVER_NAME = "aws-partner-central-mcp-server";
-export const SERVER_VERSION = "1.0.10";
+export const SERVER_VERSION = "1.0.11";
 
 export const CRED_REFRESH_WINDOW_MS = 60_000;
 

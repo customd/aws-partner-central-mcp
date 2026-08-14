@@ -265,13 +265,39 @@ async function runDeviceFlow(config: SsoConfig): Promise<PersistedSsoToken> {
   return cache;
 }
 
+/**
+ * Whether a cached SSO token may be used for `region`.
+ *
+ * LOAD-BEARING region check: the cache is keyed on sha1(startUrl) ALONE and the file
+ * is shared with the AWS CLI, so an entry can belong to a different SSO region than
+ * the one now configured (the user changed AWS_SSO_REGION, or the CLI wrote it). An
+ * SSO access token is only valid in the region that issued it, so a mismatch must
+ * count as a cache MISS and re-run the device flow — otherwise the stale token is
+ * accepted here and fails much later inside ListAccounts / GetRoleCredentials as a
+ * baffling authorization error. See GitHub issue #2.
+ */
+export function isCachedTokenUsable(
+  cached: PersistedSsoToken | null,
+  region: string,
+): boolean {
+  if (cached === null) return false;
+  if (cached.region !== region) return false;
+  return isTokenLive(cached);
+}
+
 async function getOrAcquireSsoToken(config: SsoConfig): Promise<string> {
   const cached = await readTokenCache(config.startUrl);
-  if (cached && isTokenLive(cached)) {
+  if (cached !== null && isCachedTokenUsable(cached, config.region)) {
     logger.debug("Using cached SSO access token", {
       expiresAt: cached.expiresAt,
     });
     return cached.accessToken;
+  }
+  if (cached !== null && cached.region !== config.region) {
+    logger.info("Cached SSO token was issued in another region — re-authorizing", {
+      cachedRegion: cached.region,
+      configuredRegion: config.region,
+    });
   }
   const fresh = await runDeviceFlow(config);
   return fresh.accessToken;

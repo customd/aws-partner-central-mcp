@@ -2,7 +2,7 @@
   "manifest_version": "0.3",
   "name": "aws-partner-central",
   "display_name": "AWS Partner Central",
-  "version": "1.0.10",
+  "version": "1.0.11",
   "description": "Talk to the AWS Partner Central 3.0 agent from Claude. Handles AWS IAM Identity Center sign-in and SigV4 signing for you.",
   "long_description": "This extension connects Claude Desktop to the AWS Partner Central 3.0 agent endpoint. Ask natural-language questions about your AWS partner account — opportunities, ACE deal registrations, invitations, partner programs, certifications, training — and Claude can answer using your live Partner Central data.\n\nSign-in is handled via AWS IAM Identity Center (formerly AWS SSO). The first time the extension is used in a session, your default browser opens to authorize this server. Subsequent calls reuse the cached token (valid for ~8 hours) until it expires.\n\nNo AWS CLI installation required. No long-lived access keys stored. Sessions are catalog-scoped (AWS vs Sandbox) and expire after 48 hours.",
   "author": {
@@ -40,6 +40,7 @@
         "AWS_SSO_START_URL": "${user_config.sso_start_url}",
         "AWS_SSO_ACCOUNT_ID": "${user_config.sso_account_id}",
         "AWS_SSO_ROLE_NAME": "${user_config.sso_role_name}",
+        "AWS_SSO_REGION": "${user_config.sso_region}",
         "PARTNER_CENTRAL_DEFAULT_CATALOG": "${user_config.default_catalog}",
         "NODE_ENV": "production"
       }
@@ -62,6 +63,13 @@
       "type": "string",
       "title": "AWS SSO Role Name (optional)",
       "description": "Leave blank to auto-detect after sign-in: if you have a single role it's used automatically, otherwise you'll be asked to pick one. Only set it to override (the permission-set / role name from your AWS access portal).",
+      "required": false
+    },
+    "sso_region": {
+      "type": "string",
+      "title": "AWS SSO Region (optional)",
+      "description": "The AWS region your IAM Identity Center (SSO) instance lives in — e.g. eu-central-1. Defaults to us-east-1. This is only where you SIGN IN; Partner Central itself is always us-east-1, so leave this blank unless your AWS access portal is in another region.",
+      "default": "us-east-1",
       "required": false
     },
     "default_catalog": {

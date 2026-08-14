@@ -26,9 +26,16 @@ A drag-and-drop Claude Desktop extension that connects Claude to the **AWS Partn
    | **AWS SSO Start URL** | Your IAM Identity Center portal URL (the only required field) | `https://your-org.awsapps.com/start` |
    | **AWS Account ID** *(optional)* | Leave blank to auto-detect. Set the 12-digit ID only to override. | `123456789012` |
    | **AWS SSO Role Name** *(optional)* | Leave blank to auto-detect. Set it only to override (the role from your AWS access portal). | e.g. `PartnerCentral-Executives` |
+   | **AWS SSO Region** *(optional)* | The region your IAM Identity Center instance is in. Defaults to `us-east-1` — set it only if you sign in elsewhere. | e.g. `eu-central-1` |
    | **Default Catalog** *(optional)* | `AWS` for live data, `Sandbox` for testing (defaults to `AWS`) | `AWS` |
 
-   > **Usually you only enter the Start URL.** After sign-in, the extension auto-detects your AWS account and role from the SSO session: if you have a single role it's used automatically; if you can access several, you'll get a **dropdown to pick one** (and it's remembered). Set Account ID / Role only to override. Region is fixed to `us-east-1`. Tip: after installing, ask Claude to **"verify my Partner Central connection"** — it confirms sign-in and shows the detected account/role.
+   > **Usually you only enter the Start URL.** After sign-in, the extension auto-detects your AWS account and role from the SSO session: if you have a single role it's used automatically; if you can access several, you'll get a **dropdown to pick one** (and it's remembered). Set Account ID / Role only to override. Tip: after installing, ask Claude to **"verify my Partner Central connection"** — it confirms sign-in and shows the detected account/role.
+
+   > **Signing in outside `us-east-1`?** These are two separate regions. **AWS SSO Region** is where your
+   > Identity Center directory lives and can be anything (e.g. `eu-central-1`). Partner Central itself is
+   > **`us-east-1`-only**, so requests to it are always signed for `us-east-1` — that is not configurable and
+   > must not be changed. `verify_connection` prints both so you can confirm at a glance. (Note the extension
+   > deliberately ignores an ambient `AWS_REGION`, so a value exported in your shell can't break signing.)
 
 6. Click **Install**.
 

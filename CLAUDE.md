@@ -157,6 +157,29 @@ build before running (npm test's `pretest` does this). Keep that style; inject m
    must never turn a usable reply into an error) and only runs for approvals, and `respond_to_approval`
    **refuses to guess** when >1 write is pending — it lists them instead.
 
+14. **SSO region ≠ Partner Central region — and `AWS_REGION` must be ignored.** From GitHub issue #2
+   (`mschmidt77`, eu-central-1): a user whose Identity Center lives outside us-east-1 could not sign in;
+   forcing the region in `constants.js` fixed sign-in and then broke Partner Central. There are **two
+   independent** regions and `PartnerCentralConfig` already modelled both (`config.region` vs
+   `config.sso.region`) — `loadConfig` was just assigning one value to both.
+   - `config.sso.region` ← `AWS_SSO_REGION` (new optional `sso_region` install field, default `us-east-1`).
+     Consumed **only** by `sso-auth.ts` (SSOOIDC device flow, `ListAccounts`/`ListAccountRoles`/`GetRoleCredentials`).
+   - `config.region` ← **derived from the endpoint host** (`regionFromEndpoint`), never from env. This is the
+     SigV4 signing region and MUST match the endpoint. **Deliberately no longer reads `AWS_REGION`**: that var
+     is not a manifest field, so it arrives from the *ambient* process env — anyone with `AWS_REGION` exported
+     (common for AWS users) previously had BOTH regions silently moved off us-east-1, breaking signing. Don't
+     "restore" it as a fallback.
+   - **Token-cache region guard** (`isCachedTokenUsable`): the cache is keyed on `sha1(startUrl)` ALONE and is
+     shared with the AWS CLI, so an entry can be from another SSO region; an SSO token is only valid in its
+     issuing region, so a mismatch must be a cache MISS or it fails later inside `ListAccounts` as a baffling
+     auth error.
+   - `verify_connection` and the startup log print **both** regions so this misconfiguration self-diagnoses.
+   Verification without an eu-central-1 account: `RegisterClient` is **unauthenticated** (succeeds live against
+   `oidc.eu-central-1.amazonaws.com`) and `ListAccounts` returns a region-local `UnauthorizedException`, proving
+   real regional routing. `test/sso-region.test.mjs` pins host resolution hermetically (records the host in the
+   SDK `build` step, then aborts — no creds, no network). **Still unverified end-to-end**: `CreateToken` +
+   `GetRoleCredentials` against a directory genuinely in another region — needs the reporter to confirm.
+
 ## Live testing & safety
 
 - The extension is usually connected to the dev session as `mcp__AWS_Partner_Central__*` — but that's the
@@ -184,7 +207,14 @@ build before running (npm test's `pretest` does this). Keep that style; inject m
 ## State (update as you go)
 
 - Latest tag: **v1.0.9** (on `main`; the earlier "v1.0.8/v1.0.9 pending, untagged" note was stale — `git tag`
-  shows v1.0.9 exists). **v1.0.10** is committed but **not yet tagged or released**.
+  shows v1.0.9 exists). Latest release: **v1.0.11**, which ships TWO independent fixes as one tag — they are
+  separate commits (v1.0.10 was never tagged on its own), so read both bullets below when writing release notes.
+  - **v1.0.11** (SSO region split — gotcha #14, GitHub issue #2): `AWS_SSO_REGION` / `sso_region` install field
+    separates the sign-in region from the us-east-1 signing region; `AWS_REGION` is now ignored; token-cache
+    region guard; both regions shown by `verify_connection`. Pinned by `test/sso-region.test.mjs`.
+    The non-us-east-1 SSO path is **unconfirmed end-to-end** (no test directory outside us-east-1) — the
+    reporter was asked on issue #2 to verify. It cannot regress us-east-1 users: `sso_region` defaults to
+    `us-east-1` and the signing region is now derived rather than env-driven.
   - **v1.0.10** (session-id resilience, from the Cowork `get_session` bug report — gotchas #12/#13): tools no
     longer hard-depend on `session_id` arriving (hosts strip `required`); `session-memory.ts` resolves the
     latest session per catalog; the approval `tool_use_id` is recovered server-side so `get_session` is off

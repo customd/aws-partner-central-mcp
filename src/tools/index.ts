@@ -647,6 +647,7 @@ Returns structured content: { ok, catalog, config: { sso_start_url, account_id (
           account_id: maskAccountId(accountId),
           role_name: roleName ?? "(auto-detect on sign-in)",
           region: config.region,
+          sso_region: config.sso.region,
           default_catalog: config.defaultCatalog,
         };
         const lines = [
@@ -655,7 +656,8 @@ Returns structured content: { ok, catalog, config: { sso_start_url, account_id (
           `- SSO start URL: ${summary.sso_start_url}`,
           `- Account ID: ${summary.account_id}${tag}`,
           `- Role name: ${summary.role_name}${tag}`,
-          `- Region: ${summary.region}`,
+          `- SSO region (where you sign in): ${summary.sso_region}`,
+          `- Partner Central region (fixed): ${summary.region}`,
           `- Default catalog: ${summary.default_catalog}`,
         ];
         return { summary, lines };

@@ -74,7 +74,8 @@ export const VerifyConnectionOutputSchema = z.object({
       sso_start_url: z.string(),
       account_id: z.string(),
       role_name: z.string(),
-      region: z.string(),
+      region: z.string().describe("Region Partner Central requests are signed for (us-east-1)."),
+      sso_region: z.string().describe("Region of the user's IAM Identity Center instance."),
       default_catalog: z.string(),
     })
     .optional()

@@ -2,6 +2,7 @@ import {
   CATALOG_AWS,
   DEFAULT_ENDPOINT,
   DEFAULT_REGION,
+  DEFAULT_SSO_REGION,
   ENDPOINT_ALLOWED_HOST_SUFFIX,
   VALID_CATALOGS,
 } from "./constants.js";
@@ -97,6 +98,35 @@ function validateRoleName(roleName: string): string {
   return roleName;
 }
 
+/** AWS region shape: us-east-1, eu-central-1, ap-southeast-2, us-gov-west-1, … */
+const REGION_PATTERN = /^[a-z]{2}(?:-gov|-iso[a-z]?)?-[a-z]+-\d{1,2}$/;
+
+function validateRegion(region: string, envName: string): string {
+  if (!REGION_PATTERN.test(region)) {
+    throw new ConfigError(
+      `${envName} is not a valid AWS region (got '${region}'). Example: eu-central-1.`,
+    );
+  }
+  return region;
+}
+
+/**
+ * Derive the SIGNING region from the endpoint host.
+ *
+ * SigV4 is only valid if the credential scope's region matches the endpoint being
+ * called, so this must never come from AWS_REGION: that variable is inherited from
+ * the ambient process environment (it is NOT a manifest user_config field), so any
+ * user with `AWS_REGION` exported — common for AWS users — would previously have had
+ * BOTH regions silently moved off us-east-1, breaking signing against the
+ * us-east-1-only endpoint. Deriving it makes signing correct by construction and
+ * keeps working if AWS ever adds a Partner Central region. See GitHub issue #2.
+ */
+function regionFromEndpoint(endpoint: string): string {
+  const host = new URL(endpoint).hostname;
+  const match = /\.([a-z]{2}(?:-gov|-iso[a-z]?)?-[a-z]+-\d{1,2})\./.exec(host);
+  return match?.[1] ?? DEFAULT_REGION;
+}
+
 function validateCatalog(value: string): string {
   if (!VALID_CATALOGS.includes(value as (typeof VALID_CATALOGS)[number])) {
     throw new ConfigError(
@@ -119,10 +149,18 @@ export function loadConfig(): PartnerCentralConfig {
   const roleName = readEnv("AWS_SSO_ROLE_NAME");
   if (roleName !== undefined) validateRoleName(roleName);
 
-  const region = readEnv("AWS_REGION") ?? DEFAULT_REGION;
   const endpoint = validateEndpoint(
     readEnv("PARTNER_CENTRAL_ENDPOINT") ?? DEFAULT_ENDPOINT,
   );
+  // Two INDEPENDENT regions (GitHub issue #2): `region` signs requests to Partner
+  // Central and must match the endpoint; `ssoRegion` is where the user's Identity
+  // Center directory lives and may be anything (e.g. eu-central-1).
+  const region = regionFromEndpoint(endpoint);
+  const ssoRegion = validateRegion(
+    readEnv("AWS_SSO_REGION") ?? DEFAULT_SSO_REGION,
+    "AWS_SSO_REGION",
+  );
+
   const defaultCatalog = validateCatalog(
     readEnv("PARTNER_CENTRAL_DEFAULT_CATALOG") ?? CATALOG_AWS,
   );
@@ -135,7 +173,7 @@ export function loadConfig(): PartnerCentralConfig {
       startUrl,
       accountId,
       roleName,
-      region,
+      region: ssoRegion,
     },
   };
 }
