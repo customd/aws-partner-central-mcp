@@ -15,6 +15,7 @@ import {
   type ElicitAccountRole,
 } from "../services/account-role.js";
 import { parseAgentResponse } from "../services/response-parser.js";
+import { SessionMemory } from "../services/session-memory.js";
 import {
   GetSessionInputSchema,
   RespondToApprovalInputSchema,
@@ -33,7 +34,12 @@ import {
   VerifyConnectionOutputSchema,
 } from "../schemas/outputs.js";
 import { formatAgentResponse } from "./format.js";
-import type { ContentBlock, PartnerCentralConfig } from "../types.js";
+import type {
+  ApprovalRequest,
+  ContentBlock,
+  NormalizedAgentResponse,
+  PartnerCentralConfig,
+} from "../types.js";
 import { ERROR_CODE } from "../constants.js";
 
 /**
@@ -149,6 +155,60 @@ function handleError(err: unknown): ReturnType<typeof errorResult> {
   return errorResult(`Unexpected error: ${(err as Error).message ?? String(err)}`);
 }
 
+/** Dependencies the session-scoped tool handlers need, injectable for tests. */
+export interface ToolContext {
+  client: Pick<PartnerCentralClient, "callTool" | "uploadDocuments">;
+  memory: SessionMemory;
+  defaultCatalog: string;
+}
+
+const MISSING_SESSION_HINT =
+  "No session_id was supplied, and this extension hasn't handled a session for this catalog yet in the current run. " +
+  "Call partner_central_send_message first — its response includes the session_id — then pass that session_id here.";
+
+/**
+ * Resolve which session a call targets. A supplied id always wins; otherwise fall
+ * back to the most recent session for the catalog, because hosts strip `required`
+ * from the advertised schema and the model then omits session_id entirely
+ * (CLAUDE.md gotcha #12). Returns null when there is nothing to fall back to.
+ */
+export function resolveSessionId(
+  ctx: ToolContext,
+  catalog: string,
+  supplied: string | undefined,
+): { sessionId: string; inferred: boolean } | null {
+  if (supplied !== undefined) return { sessionId: supplied, inferred: false };
+  const remembered = ctx.memory.latestFor(catalog);
+  return remembered !== undefined ? { sessionId: remembered, inferred: true } : null;
+}
+
+/**
+ * Read a session's CURRENT pending write-approval requests.
+ *
+ * A non-streaming `requires_approval` sendMessage reply carries only the proposal
+ * prose — the structured `tool_use_id` lives in the session's TOOL_REQUEST event
+ * (CLAUDE.md gotcha #3). Fetching it here, immediately, is both what unblocks the
+ * approval flow without a second client round-trip AND the freshest possible read
+ * (the id changes whenever the agent re-proposes).
+ *
+ * Best-effort by design: recovery must never turn a usable reply into an error.
+ */
+async function fetchPendingApprovals(
+  ctx: ToolContext,
+  catalog: string,
+  sessionId: string,
+): Promise<ApprovalRequest[]> {
+  try {
+    const raw = await ctx.client.callTool("getSession", { sessionId, catalog });
+    return parseAgentResponse(raw).approvalRequests ?? [];
+  } catch (err) {
+    logger.warn("Could not recover the pending approval from the session", {
+      error: (err as Error).message,
+    });
+    return [];
+  }
+}
+
 /**
  * Build the account/role picker. If the connected client supports MCP
  * elicitation, present a single-select form (rendered as a dropdown);
@@ -233,6 +293,162 @@ export async function runSelectAccount(
 }
 
 /**
+ * Fill in a `requires_approval` reply's missing `tool_use_id` by reading it back
+ * from the session, so the very first response carries what respond_to_approval
+ * needs. Returns the response unchanged when there is nothing to add.
+ */
+async function withRecoveredApprovals(
+  ctx: ToolContext,
+  catalog: string,
+  parsed: NormalizedAgentResponse,
+): Promise<NormalizedAgentResponse> {
+  const alreadyHas = parsed.approvalRequests !== undefined && parsed.approvalRequests.length > 0;
+  if (parsed.status !== "requires_approval" || alreadyHas || parsed.sessionId === undefined) {
+    return parsed;
+  }
+  const recovered = await fetchPendingApprovals(ctx, catalog, parsed.sessionId);
+  return recovered.length > 0 ? { ...parsed, approvalRequests: recovered } : parsed;
+}
+
+/**
+ * Core of partner_central_send_message, factored out for testability. Records the
+ * resulting session so later calls can resolve a missing session_id, and back-fills
+ * the pending approval's tool_use_id when the agent asks for approval.
+ */
+export async function runSendMessage(
+  ctx: ToolContext,
+  params: SendMessageInput,
+): Promise<ReturnType<typeof errorResult> | ReturnType<typeof successResult>> {
+  const catalog = params.catalog ?? ctx.defaultCatalog;
+  try {
+    const content: ContentBlock[] = [{ type: "text", text: params.message }];
+    if (params.attachments && params.attachments.length > 0) {
+      logger.debug("Uploading attachments", { count: params.attachments.length });
+      const docs = await ctx.client.uploadDocuments(params.attachments);
+      content.push(...docs);
+    }
+    const args: Record<string, unknown> = { content, catalog };
+    if (params.session_id !== undefined) args.sessionId = params.session_id;
+    logger.debug("Calling sendMessage", {
+      catalog,
+      hasSession: params.session_id !== undefined,
+      attachments: params.attachments?.length ?? 0,
+    });
+    const raw = await ctx.client.callTool("sendMessage", args);
+    const parsed = parseAgentResponse(raw);
+    if (parsed.sessionId !== undefined) ctx.memory.remember(catalog, parsed.sessionId);
+    const enriched = await withRecoveredApprovals(ctx, catalog, parsed);
+    const formatted = formatAgentResponse(
+      enriched,
+      params.response_format,
+      params.show_activity,
+      catalog,
+    );
+    return successResult(formatted.text, formatted.structured);
+  } catch (err) {
+    return handleError(err);
+  }
+}
+
+/**
+ * Core of partner_central_get_session, factored out for testability. Falls back to
+ * the catalog's most recent session when session_id is absent (see resolveSessionId)
+ * and says so in the reply, so an inferred target is never silently assumed.
+ */
+export async function runGetSession(
+  ctx: ToolContext,
+  params: GetSessionInput,
+): Promise<ReturnType<typeof errorResult> | ReturnType<typeof successResult>> {
+  const catalog = params.catalog ?? ctx.defaultCatalog;
+  const resolved = resolveSessionId(ctx, catalog, params.session_id);
+  if (resolved === null) return errorResult(MISSING_SESSION_HINT);
+  logger.debug("Calling getSession", { catalog, inferred: resolved.inferred });
+  try {
+    const raw = await ctx.client.callTool("getSession", {
+      sessionId: resolved.sessionId,
+      catalog,
+    });
+    const parsed = parseAgentResponse(raw);
+    if (parsed.sessionId !== undefined) ctx.memory.remember(catalog, parsed.sessionId);
+    const notice = resolved.inferred
+      ? `_(No session_id was given — showing the most recent ${catalog} session: \`${resolved.sessionId}\`.)_`
+      : undefined;
+    const formatted = formatAgentResponse(parsed, params.response_format, true, catalog, notice);
+    if (!resolved.inferred) return successResult(formatted.text, formatted.structured);
+    return successResult(formatted.text, {
+      ...formatted.structured,
+      session_id_inferred: true,
+    });
+  } catch (err) {
+    return handleError(err);
+  }
+}
+
+/**
+ * Core of partner_central_respond_to_approval, factored out for testability.
+ * Resolves session_id and, when tool_use_id is absent, reads the session's current
+ * pending request instead of dead-ending. Refuses to guess when several writes are
+ * pending — approving the wrong one is not recoverable.
+ */
+export async function runRespondToApproval(
+  ctx: ToolContext,
+  params: RespondToApprovalInput,
+): Promise<ReturnType<typeof errorResult> | ReturnType<typeof successResult>> {
+  const catalog = params.catalog ?? ctx.defaultCatalog;
+  const resolved = resolveSessionId(ctx, catalog, params.session_id);
+  if (resolved === null) return errorResult(MISSING_SESSION_HINT);
+  try {
+    let toolUseId = params.tool_use_id;
+    if (toolUseId === undefined) {
+      const pending = await fetchPendingApprovals(ctx, catalog, resolved.sessionId);
+      if (pending.length > 1) {
+        return errorResult(
+          `Session ${resolved.sessionId} has ${pending.length} writes awaiting approval, so tool_use_id cannot be inferred safely. ` +
+            "Confirm with the user which one to act on, then pass its tool_use_id explicitly: " +
+            pending.map((p) => `${p.toolName ?? "(unspecified)"} → ${p.toolUseId}`).join(" | "),
+        );
+      }
+      const only = pending[0];
+      if (only === undefined) {
+        return errorResult(
+          `No tool_use_id was supplied, and session ${resolved.sessionId} has no write awaiting approval. ` +
+            "It may already have been approved or rejected, or the agent may have withdrawn it. Call partner_central_get_session to inspect the session, or continue conversationally with partner_central_send_message.",
+        );
+      }
+      toolUseId = only.toolUseId;
+      logger.debug("Recovered the pending tool_use_id from the session");
+    }
+    const block: ContentBlock = {
+      type: "tool_approval_response",
+      toolUseId,
+      decision: params.decision,
+      ...(params.message !== undefined ? { message: params.message } : {}),
+    };
+    logger.debug("Calling sendMessage with approval response", {
+      catalog,
+      decision: params.decision,
+    });
+    const raw = await ctx.client.callTool("sendMessage", {
+      content: [block],
+      catalog,
+      sessionId: resolved.sessionId,
+    });
+    const parsed = parseAgentResponse(raw);
+    if (parsed.sessionId !== undefined) ctx.memory.remember(catalog, parsed.sessionId);
+    const enriched = await withRecoveredApprovals(ctx, catalog, parsed);
+    const formatted = formatAgentResponse(
+      enriched,
+      params.response_format,
+      params.show_activity,
+      catalog,
+    );
+    return successResult(formatted.text, formatted.structured);
+  } catch (err) {
+    return handleError(err);
+  }
+}
+
+/**
  * Classify a thrown error from the verify_connection probe (a read-only getSession
  * for a non-existent id) into a connection verdict.
  *
@@ -276,6 +492,11 @@ export function registerTools(
   const client = new PartnerCentralClient(config, {
     elicit: makeAccountRoleElicitor(server),
   });
+  const ctx: ToolContext = {
+    client,
+    memory: new SessionMemory(),
+    defaultCatalog: config.defaultCatalog,
+  };
 
   server.registerTool(
     "partner_central_send_message",
@@ -296,7 +517,9 @@ Args:
   - show_activity (boolean, optional, default true): append a collapsed, expandable trace of the agent's internal tool steps and 'thinking'. Set false to hide it.
 
 Approval workflow:
-  If the agent proposes a write (create/update/submit opportunity, create/submit funding application), the response has status 'requires_approval' and describes the proposed change in the reply text. Show the user exactly what will change. To proceed, EITHER reply in this same session with a natural-language partner_central_send_message ("approve", "reject because…", or "change X to Y"), OR call partner_central_get_session to fetch the pending action's tool_use_id and then call partner_central_respond_to_approval. No write executes without your confirmation.
+  If the agent proposes a write (create/update/submit opportunity, create/submit funding application), the response has status 'requires_approval' and describes the proposed change in the reply text. Show the user exactly what will change. This tool resolves the pending action's tool_use_id for you and returns it in approval_requests[], so no extra get_session call is needed. To proceed, EITHER call partner_central_respond_to_approval (passing this session_id and decision; tool_use_id is optional — it is re-resolved if omitted), OR reply in this same session with a natural-language partner_central_send_message ("approve", "reject because…", or "change X to Y"). No write executes without your confirmation.
+
+Continuing a conversation: ALWAYS pass session_id from the previous response when following up. Omitting it silently starts a NEW session with no memory of the prior turns.
 
 Writes & stage progression: opportunity writes — including progressing a stage all the way to 'Launched' (closed-won) — are PARTNER-initiated. The agent may run an advisory readiness check and report an opportunity is "not ready" (e.g. "AWS hasn't launched it on their side", "no marketplace offer linked", "no customer deal acceptance"). That is GUIDANCE, not a hard API constraint — the Selling API enforces the real rules and will often accept the write regardless (confirmed: a 'For Visibility Only' opp was moved to Launched while the advisor said is_valid:false). To actually perform a change, phrase your message as an instruction to EXECUTE it ("set Stage to Launched and proceed", "make the update") — not a validity question ("is this transition valid?"), which makes the agent editorialize and refuse. Always confirm the concrete change with the user before approving the write.
 
@@ -315,37 +538,7 @@ Errors: AuthenticationFailure/-32001 or HTTP 403 (run partner_central_verify_con
         openWorldHint: true,
       },
     },
-    async (params: SendMessageInput) => {
-      const catalog = params.catalog ?? config.defaultCatalog;
-      try {
-        const content: ContentBlock[] = [{ type: "text", text: params.message }];
-        if (params.attachments && params.attachments.length > 0) {
-          logger.debug("Uploading attachments", {
-            count: params.attachments.length,
-          });
-          const docs = await client.uploadDocuments(params.attachments);
-          content.push(...docs);
-        }
-        const args: Record<string, unknown> = { content, catalog };
-        if (params.session_id !== undefined) args.sessionId = params.session_id;
-        logger.debug("Calling sendMessage", {
-          catalog,
-          hasSession: params.session_id !== undefined,
-          attachments: params.attachments?.length ?? 0,
-        });
-        const raw = await client.callTool("sendMessage", args);
-        const parsed = parseAgentResponse(raw);
-        const formatted = formatAgentResponse(
-          parsed,
-          params.response_format,
-          params.show_activity,
-          catalog,
-        );
-        return successResult(formatted.text, formatted.structured);
-      } catch (err) {
-        return handleError(err);
-      }
-    },
+    async (params: SendMessageInput) => runSendMessage(ctx, params),
   );
 
   server.registerTool(
@@ -357,8 +550,8 @@ Errors: AuthenticationFailure/-32001 or HTTP 403 (run partner_central_verify_con
 Use this for an explicit, structured decision. (You can also approve/reject conversationally by sending a natural-language partner_central_send_message in the same session — the agent honors it.) Always confirm the proposed values with the user before approving.
 
 Args:
-  - session_id (string, required): The session that returned 'requires_approval'.
-  - tool_use_id (string, required): The pending action's tool_use_id. It is usually NOT in the send_message response (it arrives via streaming) — call partner_central_get_session(session_id) and read approval_requests[].tool_use_id to obtain it. Fetch it immediately before approving; the id changes if the agent re-proposes, so if you get a "does not match pending tool request" error, re-fetch via get_session and retry.
+  - session_id (string, strongly recommended): The session that returned 'requires_approval'. If omitted, the most recent session for the catalog is used.
+  - tool_use_id (string, optional): The pending action's tool_use_id, as given in the send_message response's approval_requests[]. If you omit it, this tool reads the session's CURRENT pending request and uses that — which is also the fix for a "does not match pending tool request" error, so on that error simply retry WITHOUT tool_use_id. If several writes are pending at once it will not guess: it returns the list so you can confirm which one with the user.
   - decision ('approve' | 'reject' | 'override', required): 'approve' executes as proposed; 'reject' cancels (use message to explain); 'override' executes with the modified instructions in message.
   - message (string, optional): Required for 'override', recommended for 'reject'.
   - catalog ('AWS' | 'Sandbox', optional), response_format ('markdown' | 'json', optional).
@@ -374,36 +567,7 @@ Returns the agent's response after the decision is applied (same shape as send_m
         openWorldHint: true,
       },
     },
-    async (params: RespondToApprovalInput) => {
-      const catalog = params.catalog ?? config.defaultCatalog;
-      const block: ContentBlock = {
-        type: "tool_approval_response",
-        toolUseId: params.tool_use_id,
-        decision: params.decision,
-        ...(params.message !== undefined ? { message: params.message } : {}),
-      };
-      logger.debug("Calling sendMessage with approval response", {
-        catalog,
-        decision: params.decision,
-      });
-      try {
-        const raw = await client.callTool("sendMessage", {
-          content: [block],
-          catalog,
-          sessionId: params.session_id,
-        });
-        const parsed = parseAgentResponse(raw);
-        const formatted = formatAgentResponse(
-          parsed,
-          params.response_format,
-          params.show_activity,
-          catalog,
-        );
-        return successResult(formatted.text, formatted.structured);
-      } catch (err) {
-        return handleError(err);
-      }
-    },
+    async (params: RespondToApprovalInput) => runRespondToApproval(ctx, params),
   );
 
   server.registerTool(
@@ -415,7 +579,7 @@ Returns the agent's response after the decision is applied (same shape as send_m
 Use when the user references a previous Partner Central conversation by session ID, or to inspect a session's full state before sending more messages.
 
 Args:
-  - session_id (string, required): The session identifier from a previous send_message response.
+  - session_id (string, strongly recommended): The session identifier from a previous send_message response. ALWAYS pass it when you have it. If you omit it, the most recent session this extension handled for the catalog is used and the reply says so (structuredContent.session_id_inferred = true) — a convenience, not a substitute for the real id.
   - catalog ('AWS' | 'Sandbox', optional): Catalog the session was created in. Sessions are catalog-scoped.
   - response_format ('markdown' | 'json', optional, default 'markdown').
 
@@ -434,21 +598,7 @@ Errors: ResourceNotFound/-30001 (session expired >48h or wrong catalog); HTTP 40
         openWorldHint: true,
       },
     },
-    async (params: GetSessionInput) => {
-      const catalog = params.catalog ?? config.defaultCatalog;
-      logger.debug("Calling getSession", { catalog });
-      try {
-        const raw = await client.callTool("getSession", {
-          sessionId: params.session_id,
-          catalog,
-        });
-        const parsed = parseAgentResponse(raw);
-        const formatted = formatAgentResponse(parsed, params.response_format, true, catalog);
-        return successResult(formatted.text, formatted.structured);
-      } catch (err) {
-        return handleError(err);
-      }
-    },
+    async (params: GetSessionInput) => runGetSession(ctx, params),
   );
 
   server.registerTool(

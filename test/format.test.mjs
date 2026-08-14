@@ -71,7 +71,12 @@ test("markdown: requires_approval without a structured id shows the generic note
     "markdown",
   );
   assert.match(r.text, /needs your approval/i);
-  assert.match(r.text, /partner_central_get_session/);
+  // The tool_use_id is genuinely unavailable at this point (recovery already ran and
+  // found nothing), so the note must point at the two routes that don't need one —
+  // NOT at get_session, which cannot supply what isn't there.
+  assert.match(r.text, /partner_central_send_message/);
+  assert.match(r.text, /partner_central_respond_to_approval/);
+  assert.doesNotMatch(r.text, /partner_central_get_session/);
   assert.match(r.text, /partner_central_respond_to_approval/);
 });
 

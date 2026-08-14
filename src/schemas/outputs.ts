@@ -49,6 +49,10 @@ export const AgentResponseOutputSchema = z.object({
     )
     .optional()
     .describe("Trace of the agent's internal tool/thinking steps."),
+  session_id_inferred: z
+    .boolean()
+    .optional()
+    .describe("True when no session_id was supplied and the catalog's most recent session was used."),
   is_error: z.boolean().optional(),
   truncated: z.boolean().optional(),
   original_length: z.number().optional(),

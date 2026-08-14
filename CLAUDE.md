@@ -126,6 +126,37 @@ build before running (npm test's `pretest` does this). Keep that style; inject m
    and proceed") makes it build the real `update_opportunity_enhanced` write. The extension only forwards — this
    lives as guidance in the `send_message` tool description; do **not** add a code gate.
 
+12. **Hosts STRIP `required` from the advertised input schema — so no tool may hard-depend on a
+   parameter arriving.** Diagnosed 2026-08-14 from a Cowork bug report: `get_session` failed on *every*
+   call with `-32602 Input validation error: … path ["session_id"] … "Required"`. That string is emitted by
+   **our own** server (`@modelcontextprotocol/sdk/server/mcp.js#validateToolInput`), not the bridge — the
+   arguments genuinely arrived without `session_id`. Two clues pinned the cause: the schema is `.strict()`,
+   so a *renamed* key would have added an `unrecognized_keys` issue (the report had only the one issue ⇒
+   nothing unexpected was sent, `session_id` was simply absent), and the schema surfaced to the calling
+   model was `{properties:{catalog,response_format,session_id},type:"object"}` — **no `required`**, and no
+   `pattern`/`minLength`/`maxLength`, with sibling `description`s dropped. The server advertises all of
+   those correctly (verify with `scripts/`-style `tools/list` dump), so the loss is **host-side schema
+   normalisation under a size budget**. With `required` gone, `session_id` reads as optional and the model
+   omits it. Same root cause for the "sessions have no memory" report: an omitted (genuinely optional)
+   `session_id` on `send_message` silently starts a NEW session. **Not an AWS-side change** — the remote
+   honours `session_id` fine (proved live: two `sendMessage`s in one Sandbox session round-tripped
+   "BANANA", and `getSession` with an explicit id returned a proper remote "not found").
+   Fix (v1.0.10): `session_id` (and `respond_to_approval`'s `tool_use_id`) are `.optional()` in Zod so the
+   SDK cannot dead-end the call **before the handler runs**; the handler then resolves them —
+   `session-memory.ts` remembers the latest session **per catalog**, and a missing `tool_use_id` is read
+   back from the session. Format checks still apply when a value IS supplied, and an inferred session is
+   always disclosed (`session_id_inferred`). **Don't "tidy" these back to required** — SDK-level
+   enforcement is exactly what fails unrecoverably here. Pinned by `test/session-resilience.test.mjs`.
+13. **The approval `tool_use_id` is now recovered server-side — `get_session` is off the critical path.**
+   The reported *impact* of #12 was that writes were unreachable: `requires_approval` carries only prose,
+   so the caller had to fetch `tool_use_id` via `get_session`, which was the broken tool. `send_message` /
+   `respond_to_approval` now call `getSession` internally on a `requires_approval` reply and merge the
+   pending request into `approval_requests[]`, so the **first** response carries the id (also the freshest
+   possible read — gotcha #3's id changes on re-propose, so omitting `tool_use_id` is the *fix* for a stale
+   "does not match pending tool request", not a risk). Recovery is best-effort (a throttled/failed lookup
+   must never turn a usable reply into an error) and only runs for approvals, and `respond_to_approval`
+   **refuses to guess** when >1 write is pending — it lists them instead.
+
 ## Live testing & safety
 
 - The extension is usually connected to the dev session as `mcp__AWS_Partner_Central__*` — but that's the
@@ -152,7 +183,13 @@ build before running (npm test's `pretest` does this). Keep that style; inject m
 
 ## State (update as you go)
 
-- Latest release: **v1.0.7**. **v1.0.8 + v1.0.9** are on branch `feat/reply-visibility-opportunity-links`, both **pending release** (neither tagged yet — could squash into one tag).
+- Latest tag: **v1.0.9** (on `main`; the earlier "v1.0.8/v1.0.9 pending, untagged" note was stale — `git tag`
+  shows v1.0.9 exists). **v1.0.10** is committed but **not yet tagged or released**.
+  - **v1.0.10** (session-id resilience, from the Cowork `get_session` bug report — gotchas #12/#13): tools no
+    longer hard-depend on `session_id` arriving (hosts strip `required`); `session-memory.ts` resolves the
+    latest session per catalog; the approval `tool_use_id` is recovered server-side so `get_session` is off
+    the write path. Handlers factored into exported `runSendMessage`/`runGetSession`/`runRespondToApproval`
+    for testability (same pattern as `runSelectAccount`).
   - **v1.0.8**: clickable opportunity console links in replies, friendly tool labels (`annotations.title`), a status emoji, and removes `raw` from `structuredContent` (blank-disclosure fix).
   - **v1.0.9** (scale-resilience, from the *ACE opportunities reconciliation* diagnosis): recognizes the live **HTTP 400 "Rate exceeded"** throttle (not just `-32004`) with a deeper throttle backoff (gotcha #9), and **caps tool-result size** to keep large `get_session`/json payloads under the client's token cap (gotcha #10). `gh release create vX.Y.Z …` (moacode account) is the user's manual step.
 - Known follow-ups: verify the prod test opportunity **O2100000** was actually closed; Windows install smoke

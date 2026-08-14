@@ -133,16 +133,18 @@ function renderApprovalRequests(requests: ApprovalRequest[]): string {
 }
 
 /**
- * Rendered when status is "requires_approval" but the structured tool request
- * isn't in the response (the non-streaming case — the agent describes the
- * proposal in prose). Tells the agent how to complete the approval.
+ * Rendered when status is "requires_approval" but no structured tool request could
+ * be obtained — the non-streaming case where the agent only describes the proposal
+ * in prose AND reading it back from the session turned up nothing. Since the
+ * tool_use_id is genuinely unavailable here, lead with the two routes that do not
+ * need one (both verified to work) rather than sending the caller to get_session.
  */
 function renderGenericApprovalNote(): string {
   return [
     "",
     "---",
     "⚠️ **This action needs your approval before it runs.** Review the proposed changes above with the user.",
-    "To proceed, either reply in this same session with `partner_central_send_message` (\"approve\", \"reject because…\", or \"change X to Y\"), or call `partner_central_get_session` to fetch the pending action's `tool_use_id` and then `partner_central_respond_to_approval`.",
+    "To proceed, either reply in this same session with `partner_central_send_message` (\"approve\", \"reject because…\", or \"change X to Y\") — passing this `session_id` — or call `partner_central_respond_to_approval` with this `session_id` and a decision, omitting `tool_use_id` so it re-resolves the pending request.",
   ].join("\n");
 }
 
@@ -160,11 +162,18 @@ function statusEmoji(status?: string): string {
   }
 }
 
+/**
+ * @param notice Optional leading remark about how the call was resolved (e.g. that
+ *   session_id was inferred). Deliberately applied to markdown ONLY — json mode
+ *   returns the raw payload and must stay parseable — and added before the
+ *   size-trimming below so it counts against CHARACTER_LIMIT like everything else.
+ */
 export function formatAgentResponse(
   parsed: NormalizedAgentResponse,
   format: "markdown" | "json",
   showActivity = true,
   catalog?: string,
+  notice?: string,
 ): FormattedToolResult {
   const { text: linkedReply, links } = linkifyOpportunities(parsed.text, catalog);
   const structured = buildStructured(parsed, links);
@@ -174,6 +183,7 @@ export function formatAgentResponse(
     text = JSON.stringify(parsed.raw, null, 2);
   } else {
     const lines: string[] = [];
+    if (notice !== undefined && notice.length > 0) lines.push(notice, "");
     if (parsed.status) lines.push(`**Status:** ${statusEmoji(parsed.status)}${parsed.status}`);
     if (parsed.sessionId) lines.push(`**Session:** \`${parsed.sessionId}\``);
     if (lines.length > 0) lines.push("");

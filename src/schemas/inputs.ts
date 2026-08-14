@@ -66,10 +66,19 @@ export const SendMessageInputSchema = z
 
 export type SendMessageInput = z.infer<typeof SendMessageInputSchema>;
 
+/**
+ * NOTE on `session_id` being `.optional()` here and in RespondToApprovalInputSchema:
+ * it is REQUIRED in spirit, but must not be enforced by the SDK's pre-handler
+ * validation. Hosts strip `required` from the advertised schema (CLAUDE.md gotcha
+ * #12), so the model omits it and the SDK rejects the call with a raw Zod dump
+ * before any handler runs — an unrecoverable dead end. Declaring it optional lets
+ * the handler resolve it (from SessionMemory) or return actionable guidance.
+ * The format checks above still apply whenever a value IS supplied.
+ */
 export const GetSessionInputSchema = z
   .object({
-    session_id: SessionIdSchema.describe(
-      "The session identifier returned by a previous send_message call. Sessions are catalog-scoped.",
+    session_id: SessionIdSchema.optional().describe(
+      "The session identifier returned by a previous send_message call. Sessions are catalog-scoped. If omitted, the most recent session this extension handled for the catalog is used.",
     ),
     catalog: CatalogSchema.optional().describe(
       "Catalog the session was created in. Omit to use the server's configured default.",
@@ -82,14 +91,15 @@ export type GetSessionInput = z.infer<typeof GetSessionInputSchema>;
 
 export const RespondToApprovalInputSchema = z
   .object({
-    session_id: SessionIdSchema.describe(
-      "The session that returned status 'requires_approval'. Required.",
+    session_id: SessionIdSchema.optional().describe(
+      "The session that returned status 'requires_approval'. If omitted, the most recent session this extension handled for the catalog is used.",
     ),
     tool_use_id: z
       .string()
-      .min(1, "tool_use_id is required")
+      .min(1, "tool_use_id must not be empty")
+      .optional()
       .describe(
-        "The toolUseId from the approval request the agent returned (status 'requires_approval').",
+        "The toolUseId from the approval request (status 'requires_approval'). If omitted, the extension looks up the session's CURRENT pending tool request and uses that — which also avoids the stale-id error, since the id changes whenever the agent re-proposes.",
       ),
     decision: z
       .enum(["approve", "reject", "override"])
